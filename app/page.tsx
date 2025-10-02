@@ -1,9 +1,13 @@
-import Image from "next/image";
+import Footer from "./components/Footer";
+import Header from "./components/Header";
+import HomePage from "./components/HomePage";
 
 export default function Home() {
   return (
-    <div>
-      Hii welcome!!!!!
-    </div>
+    <main className="min-h-screen bg-black">
+      <Header />
+      <HomePage />
+      <Footer />
+    </main>
   );
 }
