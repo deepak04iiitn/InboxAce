@@ -1,15 +1,17 @@
 "use client";
 
+import { useSession, signIn, signOut } from "next-auth/react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Mail, Sparkles } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { data: session, status } = useSession();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -19,165 +21,181 @@ export default function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Navigation links
+  const navItems = [
+    { name: "Features", href: "#features" },
+    { name: "Pricing", href: "#pricing" },
+    { name: "ReachHub", href: "#reachhub" },
+    { name: "Analytics", href: "#analytics" },
+  ];
+
   return (
-    <motion.header
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+    <header
+      className={`fixed w-full z-30 transition-all ${
         scrolled
-          ? "bg-black/95 backdrop-blur-xl border-b border-zinc-800 shadow-lg shadow-blue-500/5"
-          : "bg-black/80 backdrop-blur-lg border-b border-zinc-800"
+          ? "backdrop-blur bg-black/80 border-b border-zinc-800"
+          : "bg-transparent"
       }`}
     >
-      <nav className="container mx-auto px-4 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2 group">
-            <motion.div
-                whileHover={{ scale: 1.1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 10 }}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-3 flex items-center justify-between">
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 text-white font-bold text-xl">
+          <span>InboxAce</span>
+        </Link>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex gap-6 items-center">
+          {navItems.map((item) => (
+            <Link
+              key={item.name}
+              href={item.href}
+              className="text-zinc-300 hover:text-white transition font-medium"
             >
+              {item.name}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Auth & CTA */}
+        <div className="flex items-center gap-3">
+          {status === "loading" ? (
+            <span className="text-zinc-400">Loading...</span>
+          ) : session ? (
+            <div className="flex items-center gap-2">
+              {session.user?.profileImage && (
                 <Image
-                src="/InboxAce.png"  
-                alt="InboxAce Logo"
-                width={100}        
-                height={100}
-                className="group-hover:opacity-80 transition-opacity"
+                  src={session.user.profileImage}
+                  alt="Profile"
+                  width={32}
+                  height={32}
+                  className="rounded-full border border-zinc-700"
                 />
-            </motion.div>
-          </Link>
-
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            {["Features", "Pricing", "ReachHub", "Analytics"].map(
-              (item, index) => (
-                <motion.div
-                  key={item}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * index, duration: 0.5 }}
-                >
-                  <Link
-                    href={`#${item.toLowerCase()}`}
-                    className="text-zinc-300 hover:text-white transition-colors text-sm font-medium relative group"
-                  >
-                    {item}
-                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 group-hover:w-full transition-all duration-300" />
-                  </Link>
-                </motion.div>
-              )
-            )}
-          </div>
-
-          {/* CTA Buttons */}
-          <motion.div
-            className="hidden md:flex items-center space-x-3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4, duration: 0.5 }}
-          >
-            <Button
-              variant="ghost"
-              className="text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer transition-all duration-300"
-            >
-              Sign In
-            </Button>
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button className="cursor-pointer bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold relative overflow-hidden group">
-                <span className="relative z-10">Get Started</span>
-                <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600"
-                  initial={{ x: "100%" }}
-                  whileHover={{ x: 0 }}
-                  transition={{ duration: 0.3 }}
-                />
-              </Button>
-            </motion.div>
-          </motion.div>
-
-          {/* Mobile Menu Button */}
-          <motion.button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden text-zinc-300 hover:text-white transition-colors"
-            whileTap={{ scale: 0.9 }}
-          >
-            <AnimatePresence mode="wait">
-              {isMenuOpen ? (
-                <motion.div
-                  key="close"
-                  initial={{ rotate: -90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  exit={{ rotate: 90, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <X size={24} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="menu"
-                  initial={{ rotate: 90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  exit={{ rotate: -90, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Menu size={24} />
-                </motion.div>
               )}
-            </AnimatePresence>
-          </motion.button>
+              <span className="text-zinc-200 text-sm hidden sm:block">
+                {session.user?.email}
+              </span>
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white ml-2"
+                onClick={() => signOut()}
+              >
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  signIn("google", {
+                    prompt: "consent", // ensures correct scopes requested
+                  })
+                }
+                className="border-blue-600 text-blue-500 hover:bg-blue-50"
+              >
+                Sign In with Google
+              </Button>
+              <Link href="#pricing">
+                <Button className="bg-blue-600 text-white font-semibold ml-2">
+                  Get Started
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
 
-        {/* Mobile Menu */}
-        <AnimatePresence>
-          {isMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="md:hidden overflow-hidden border-t border-zinc-800"
+        {/* Mobile Menu Icon */}
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          className="md:hidden text-zinc-300 hover:text-white transition-colors ml-2"
+          onClick={() => setIsMenuOpen((open) => !open)}
+          aria-label="Menu"
+        >
+          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </motion.button>
+      </div>
+
+      {/* Mobile Menu Drawer */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.nav
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            className="fixed inset-y-0 right-0 w-64 bg-zinc-900 border-l border-zinc-800 shadow-lg z-50 p-7 flex flex-col gap-5"
+          >
+            <button
+              className="self-end mb-3 text-zinc-400 hover:text-white"
+              onClick={() => setIsMenuOpen(false)}
             >
-              <div className="py-4 space-y-3">
-                {["Features", "Pricing", "ReachHub", "Analytics"].map(
-                  (item, index) => (
-                    <motion.div
-                      key={item}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 * index }}
-                    >
-                      <Link
-                        href={`#${item.toLowerCase()}`}
-                        className="block text-zinc-300 hover:text-white transition-colors py-2"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        {item}
-                      </Link>
-                    </motion.div>
-                  )
-                )}
-                <motion.div
-                  className="pt-4 space-y-2"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
+              <X size={24} />
+            </button>
+            {navItems.map((item) => (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={() => setIsMenuOpen(false)}
+                className="py-2 text-zinc-100 font-medium text-lg hover:text-blue-400 transition"
+              >
+                {item.name}
+              </Link>
+            ))}
+            <div className="mt-8 flex flex-col gap-3">
+              {status === "loading" ? (
+                <span className="text-zinc-400">Loading...</span>
+              ) : session ? (
+                <>
+                  <div className="flex items-center gap-2 mb-4">
+                    {session.user?.profileImage && (
+                      <Image
+                        src={session.user.profileImage}
+                        alt="Profile"
+                        width={32}
+                        height={32}
+                        className="rounded-full border border-zinc-700"
+                      />
+                    )}
+                    <span className="text-zinc-200 text-sm">
+                      {session.user?.email}
+                    </span>
+                  </div>
+                  <Button
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      signOut();
+                    }}
+                  >
+                    Sign Out
+                  </Button>
+                </>
+              ) : (
+                <>
                   <Button
                     variant="outline"
-                    className="w-full border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      signIn("google", { prompt: "consent" });
+                    }}
+                    className="border-blue-600 text-blue-500"
                   >
-                    Sign In
+                    Sign In with Google
                   </Button>
-                  <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600">
-                    Get Started
-                  </Button>
-                </motion.div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </nav>
-    </motion.header>
+                  <Link href="#pricing">
+                    <Button
+                      className="bg-blue-600 text-white font-semibold mt-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </motion.nav>
+        )}
+      </AnimatePresence>
+    </header>
   );
 }
