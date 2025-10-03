@@ -93,9 +93,7 @@ model User {
   isSubscriptionActive  Boolean       @default(false)
   
   // Profile
-  phone         String?
   location      String?
-  bio           String?
   profileImage  String?
   
   // Timestamps
