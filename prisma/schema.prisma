@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../lib/generated/prisma"
@@ -12,4 +9,596 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  NORMAL
+  PREMIUM
+  ADMIN
+}
+
+enum PricingTier {
+  FREE
+  PLUS
+  PRO
+}
+
+enum JobStatus {
+  NOT_SENT
+  SCHEDULED
+  SENT
+  REPLIED
+  FOLLOW_UP_SENT
+}
+
+enum EmailStatus {
+  PENDING
+  SCHEDULED
+  SENT
+  FAILED
+  OPENED
+  REPLIED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NOT_SPECIFIED
+}
+
+enum EmailType {
+  APPLICATION
+  REFERRAL_REQUEST
+  FOLLOW_UP_INTERVIEW
+}
+
+enum WorkspaceRole {
+  ADMIN
+  CONTRIBUTOR
+}
+
+enum TemplateCategory {
+  GENERAL
+  TECH
+  FINANCE
+  MARKETING
+  SALES
+  DESIGN
+  CONSULTING
+  OTHER
+}
+
+// ==================== USER & SUBSCRIPTION ====================
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  name          String
+  password      String
+  role          UserRole      @default(NORMAL)
+  pricingTier   PricingTier   @default(FREE)
+  
+  // Trial Management
+  trialStartDate    DateTime?
+  trialEndDate      DateTime?
+  isTrialActive     Boolean       @default(false)
+  hasUsedTrial      Boolean       @default(false)
+  
+  // Subscription
+  subscriptionId        String?
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  isSubscriptionActive  Boolean       @default(false)
+  
+  // Profile
+  phone         String?
+  location      String?
+  bio           String?
+  profileImage  String?
+  
+  // Timestamps
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Portfolio Links (max 5)
+  portfolioLinks    String[]      @default([])
+  
+  // Relations
+  emailAccounts     EmailAccount[]
+  jobs              Job[]
+  templates         EmailTemplate[]
+  campaigns         Campaign[]
+  analytics         Analytics[]
+  badges            UserBadge[]
+  workspaceMemberships WorkspaceMember[]
+  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
+  activities        Activity[]
+  
+  @@index([email])
+  @@index([pricingTier])
+}
+
+model EmailAccount {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  email         String
+  provider      String        // "GMAIL" or "OUTLOOK"
+  
+  // OAuth Tokens
+  accessToken   String?       @db.Text
+  refreshToken  String?       @db.Text
+  tokenExpiry   DateTime?
+  
+  // App Password (fallback)
+  appPassword   String?
+  
+  isPrimary     Boolean       @default(false)
+  isActive      Boolean       @default(true)
+  
+  // Daily sending limits
+  dailyLimit    Int           @default(50)
+  sentToday     Int           @default(0)
+  lastResetDate DateTime      @default(now())
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // Relations
+  sentEmails    Email[]
+  
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+// ==================== JOB TRACKING ====================
+
+model JobBatch {
+  id              String        @id @default(uuid())
+  userId          String
+  
+  name            String        // e.g., "Tech Companies Batch 1"
+  description     String?       @db.Text
+  
+  // Batch-level Template & Content
+  templateId      String?
+  selectedTemplate EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  
+  // Customized email content for entire batch
+  batchSubject    String?
+  batchBody       String?       @db.Text
+  
+  // Portfolio Links for entire batch
+  batchLinks      String[]      @default([])
+  
+  // Batch-level Scheduling (applies to all jobs in batch)
+  sendNow         Boolean       @default(true)
+  scheduledFor    DateTime?     // If sendNow = false, send all at this time
+  
+  // Batch-level Follow-up Configuration
+  maxFollowUps    Int           @default(0)
+  daysBetweenFollowUps Int      @default(3)
+  
+  // Batch Statistics
+  totalJobs       Int           @default(0)
+  sentCount       Int           @default(0)
+  repliedCount    Int           @default(0)
+  followUpsSentCount Int        @default(0)
+  
+  // Batch Status
+  isActive        Boolean       @default(true)
+  allSent         Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  jobs            Job[]
+  
+  @@index([userId])
+  @@index([scheduledFor])
+}
+
+model Job {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  workspaceId     String?
+  workspace       Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  batchId         String?
+  batch           JobBatch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  
+  // Required Job Details (from spreadsheet)
+  recipientName   String
+  recipientGender Gender
+  position        String
+  company         String
+  recipientEmail  String
+  emailType       EmailType     // APPLICATION, REFERRAL_REQUEST, FOLLOW_UP_INTERVIEW
+  
+  // Individual Email Overrides (optional - if user wants to customize specific emails)
+  // If null, uses batch-level settings
+  customSubject   String?
+  customBody      String?       @db.Text
+  customLinks     String[]      @default([])
+  
+  // Individual Scheduling Override (optional)
+  hasCustomSchedule Boolean     @default(false)
+  customSendNow     Boolean?
+  customScheduledFor DateTime?
+  
+  // Individual Follow-up Override (optional)
+  hasCustomFollowUp Boolean     @default(false)
+  customMaxFollowUps Int?
+  
+  // Follow-up Tracking
+  followUpsSent   Int           @default(0)
+  
+  // Status Tracking
+  status          JobStatus     @default(NOT_SENT)
+  sentAt          DateTime?
+  gotReply        Boolean       @default(false)
+  repliedAt       DateTime?
+  
+  // Additional Info
+  notes           String?       @db.Text
+  tags            String[]      @default([])
+  
+  // Tracking
+  lastFollowUpAt  DateTime?
+  nextFollowUpAt  DateTime?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  emails          Email[]
+  comments        JobComment[]
+  
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([batchId])
+  @@index([status])
+  @@index([customScheduledFor])
+  @@index([emailType])
+}
+
+model JobComment {
+  id          String    @id @default(uuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  userName    String
+  
+  comment     String    @db.Text
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([jobId])
+}
+
+// ==================== EMAIL AUTOMATION ====================
+
+model Email {
+  id              String        @id @default(uuid())
+  jobId           String
+  job             Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  emailAccountId  String
+  emailAccount    EmailAccount  @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  
+  // Email Content
+  subject         String
+  body            String        @db.Text
+  htmlBody        String?       @db.Text
+  
+  // Status & Tracking
+  status          EmailStatus   @default(PENDING)
+  isFollowUp      Boolean       @default(false)
+  followUpSequence Int          @default(1)
+  
+  // Tracking Metrics
+  sentAt          DateTime?
+  openedAt        DateTime?
+  repliedAt       DateTime?
+  openCount       Int           @default(0)
+  
+  // Error Handling
+  errorMessage    String?       @db.Text
+  retryCount      Int           @default(0)
+  
+  // Thread Management
+  threadId        String?
+  messageId       String?
+  inReplyTo       String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  @@index([jobId])
+  @@index([emailAccountId])
+  @@index([status])
+  @@index([sentAt])
+}
+
+// ==================== TEMPLATES ====================
+
+model EmailTemplate {
+  id            String          @id @default(uuid())
+  userId        String?         // Null for system/ready-to-use templates
+  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name          String
+  subject       String
+  body          String          @db.Text
+  
+  // Categorization
+  category      TemplateCategory @default(GENERAL)
+  tags          String[]         @default([])
+  
+  // System vs User Templates
+  isSystemTemplate Boolean      @default(false) // Ready-to-use templates
+  
+  // Community Features (for user-created templates)
+  isPublic      Boolean         @default(false)
+  isShared      Boolean         @default(false) // User chose to share
+  usageCount    Int             @default(0)
+  rating        Float           @default(0.0)
+  ratingCount   Int             @default(0)
+  
+  // Variables/Placeholders
+  variables     String[]        @default([]) // ["{{recipientName}}", "{{position}}", "{{company}}", etc.]
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  ratings       TemplateRating[]
+  campaigns     Campaign[]
+  jobs          Job[]           // Jobs using this template
+  
+  @@index([userId])
+  @@index([category])
+  @@index([isPublic])
+  @@index([isSystemTemplate])
+}
+
+model TemplateRating {
+  id          String          @id @default(uuid())
+  templateId  String
+  template    EmailTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  rating      Int             // 1-5 stars
+  comment     String?         @db.Text
+  
+  createdAt   DateTime        @default(now())
+  
+  @@unique([templateId, userId])
+  @@index([templateId])
+}
+
+// ==================== CAMPAIGNS ====================
+
+model Campaign {
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  templateId    String?
+  template      EmailTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  
+  name          String
+  description   String?         @db.Text
+  
+  // Campaign Settings
+  isActive      Boolean         @default(true)
+  
+  // Follow-up Settings
+  enableFollowUp      Boolean   @default(false)
+  followUpDelay       Int       @default(3) // days
+  maxFollowUps        Int       @default(2)
+  followUpTemplates   String[]  @default([]) // JSON array of template content
+  
+  // Scheduling
+  scheduledStartDate  DateTime?
+  scheduledEndDate    DateTime?
+  
+  // Stats
+  totalSent     Int             @default(0)
+  totalOpened   Int             @default(0)
+  totalReplies  Int             @default(0)
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  @@index([userId])
+  @@index([isActive])
+}
+
+// ==================== ANALYTICS ====================
+
+model Analytics {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Date tracking
+  date          DateTime  @default(now()) @db.Date
+  
+  // Email Metrics
+  emailsSent    Int       @default(0)
+  emailsOpened  Int       @default(0)
+  emailsReplied Int       @default(0)
+  emailsFailed  Int       @default(0)
+  
+  // Application Metrics
+  applicationsSubmitted Int @default(0)
+  interviewsScheduled   Int @default(0)
+  
+  // Follow-up Metrics
+  followUpsSent   Int     @default(0)
+  
+  // Rates (calculated)
+  openRate      Float     @default(0.0)
+  replyRate     Float     @default(0.0)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+// ==================== WORKSPACE (ReachHub) ====================
+
+model Workspace {
+  id            String            @id @default(uuid())
+  name          String
+  password      String            // Hashed password for joining
+  
+  ownerId       String
+  owner         User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  description   String?           @db.Text
+  
+  // Stats
+  totalEmailsSent   Int           @default(0)
+  totalReplies      Int           @default(0)
+  totalOpportunities Int          @default(0)
+  
+  isActive      Boolean           @default(true)
+  
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  
+  // Relations
+  members       WorkspaceMember[]
+  jobs          Job[]
+  
+  @@index([ownerId])
+}
+
+model WorkspaceMember {
+  id            String        @id @default(uuid())
+  workspaceId   String
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role          WorkspaceRole @default(CONTRIBUTOR)
+  
+  // Member Stats
+  leadsAdded    Int           @default(0)
+  emailsSent    Int           @default(0)
+  
+  joinedAt      DateTime      @default(now())
+  
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+// ==================== GAMIFICATION ====================
+
+model Badge {
+  id            String      @id @default(uuid())
+  name          String      @unique
+  description   String
+  icon          String      // Icon URL or emoji
+  
+  // Achievement criteria
+  requirement   Int         // e.g., 10 for "10 Replies"
+  
+  createdAt     DateTime    @default(now())
+  
+  // Relations
+  userBadges    UserBadge[]
+}
+
+model UserBadge {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  badgeId       String
+  badge         Badge     @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  
+  earnedAt      DateTime  @default(now())
+  
+  @@unique([userId, badgeId])
+  @@index([userId])
+}
+
+model UserStreak {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  
+  currentStreak     Int       @default(0)
+  longestStreak     Int       @default(0)
+  lastActivityDate  DateTime  @default(now())
+  
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== ACTIVITY LOG ====================
+
+model Activity {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  action        String    // "EMAIL_SENT", "JOB_ADDED", "REPLY_RECEIVED", etc.
+  description   String    @db.Text
+  
+  metadata      Json?     // Additional context
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==================== SYSTEM CONFIGURATION ====================
+
+model SystemConfig {
+  id            String    @id @default(uuid())
+  key           String    @unique
+  value         String    @db.Text
+  
+  description   String?
+  
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([key])
+}
+
+// ==================== BULK IMPORT ====================
+
+model BulkImport {
+  id            String    @id @default(uuid())
+  userId        String
+  
+  fileName      String
+  totalRows     Int
+  successCount  Int       @default(0)
+  failureCount  Int       @default(0)
+  
+  status        String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+  errorLog      String?   @db.Text
+  
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+  
+  @@index([userId])
 }
