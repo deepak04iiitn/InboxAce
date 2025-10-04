@@ -1,16 +1,16 @@
 "use client";
 
-import { Mail, Brain, FileText, Zap, BarChart3, Users, TrendingUp, Award } from "lucide-react";
+import { Mail, Brain, FileText, Zap, BarChart3, Users, TrendingUp, Award, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import Hero from "./sections/Hero";
 import Stats from "./sections/Stats";
 import Features from "./sections/Features";
 import ReachHub from "./sections/ReachHub";
 import Analytics from "./sections/Analytics";
+import TemplatesShowcase from "./sections/TemplatesShowcase"; // ADD THIS
 import Pricing from "./sections/Pricing";
 import Gamification from "./sections/Gamification";
 import CTA from "./sections/CTA";
-
 
 export default function HomePage() {
   const features = [
@@ -96,6 +96,28 @@ export default function HomePage() {
     "Priority support",
   ];
 
+  // ADD THIS: Template stats for the templates section
+  const templateStats = [
+    {
+      label: "Community Templates",
+      value: "500+",
+      icon: <FileText className="h-5 w-5" />,
+      color: "blue",
+    },
+    {
+      label: "Templates Used",
+      value: "10K+",
+      icon: <TrendingUp className="h-5 w-5" />,
+      color: "purple",
+    },
+    {
+      label: "Categories",
+      value: "50+",
+      icon: <Sparkles className="h-5 w-5" />,
+      color: "pink",
+    },
+  ];
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -125,6 +147,14 @@ export default function HomePage() {
       <Stats stats={stats} containerVariants={containerVariants} itemVariants={itemVariants} />
       <Features features={features} containerVariants={containerVariants} itemVariants={itemVariants} />
       <ReachHub containerVariants={containerVariants} itemVariants={itemVariants} />
+      
+      {/* ADD TEMPLATES SECTION HERE */}
+      <TemplatesShowcase 
+        templateStats={templateStats} 
+        containerVariants={containerVariants} 
+        itemVariants={itemVariants} 
+      />
+      
       <Analytics containerVariants={containerVariants} itemVariants={itemVariants} />
       <Pricing benefits={benefits} containerVariants={containerVariants} itemVariants={itemVariants} />
       <Gamification containerVariants={containerVariants} itemVariants={itemVariants} />

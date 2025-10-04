@@ -5,9 +5,9 @@ import HomePage from "./components/HomePage";
 export default function Home() {
   return (
     <main className="min-h-screen bg-black">
-      <Header />
+      
       <HomePage />
-      <Footer />
+      
     </main>
   );
 }

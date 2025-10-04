@@ -337,6 +337,12 @@ model EmailTemplate {
   ratingCount   Int             @default(0)
   variables     String[]        @default([])
 
+  isCommunity     Boolean         @default(false)
+  createdByName   String?
+
+  likes           Int             @default(0)
+  downloads       Int             @default(0)
+
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -349,6 +355,8 @@ model EmailTemplate {
 
   // Added opposite relation field for JobBatch.selectedTemplate
   jobBatches    JobBatch[]
+
+  templateLikes TemplateLike[]
 }
 
 model TemplateRating {
@@ -364,6 +372,21 @@ model TemplateRating {
 
   @@unique([templateId, userId])
   @@index([templateId])
+}
+
+
+// Add new model for template likes
+model TemplateLike {
+  id          String          @id @default(uuid())
+  templateId  String
+  template    EmailTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  userId      String
+  createdAt   DateTime        @default(now())
+  
+  @@unique([templateId, userId])
+  @@index([templateId])
+  @@index([userId])
 }
 
 // ==================== CAMPAIGNS ====================
