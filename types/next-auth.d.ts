@@ -6,7 +6,7 @@ declare module "next-auth" {
     role?: string;
     pricingTier?: string;
     lastLoginAt?: Date;
-    profileImage?: string; // ✅ add this
+    profileImage?: string;
   }
 
   interface Session {
@@ -15,8 +15,12 @@ declare module "next-auth" {
       role?: string;
       pricingTier?: string;
       lastLoginAt?: Date;
-      profileImage?: string; // ✅ add this
+      profileImage?: string;
     } & DefaultSession["user"];
+    // Add token fields to session
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
   }
 }
 
@@ -27,6 +31,10 @@ declare module "next-auth/jwt" {
     role?: string;
     pricingTier?: string;
     lastLoginAt?: Date;
-    profileImage?: string; // ✅ add this
+    profileImage?: string;
+    // Add token fields to JWT
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
   }
 }

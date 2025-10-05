@@ -8,8 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Menu, X, ChevronDown, Layout, LogOut, User as UserIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+// import { useSaveGmailTokens } from "@/hooks/useSaveGmailTokens";
 
 export default function Header() {
+
+  // useSaveGmailTokens();
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -170,7 +174,7 @@ export default function Header() {
                       </div>
                       <div className="p-2">
                         <Link
-                          href="/dashboard"
+                          href="/dashboard/jobs-tracker"
                           className="flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-all"
                         >
                           <UserIcon className="w-4 h-4" />
@@ -309,7 +313,7 @@ export default function Header() {
                       </div>
                       <div className="space-y-2">
                         <Link
-                          href="/dashboard"
+                          href="/dashboard/jobs-tracker"
                           onClick={() => setIsMenuOpen(false)}
                           className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-all"
                         >
