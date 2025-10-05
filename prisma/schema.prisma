@@ -80,6 +80,10 @@ model User {
   // Default Template Selection
   defaultTemplateId String?
   defaultTemplate   EmailTemplate? @relation("UserDefaultTemplate", fields: [defaultTemplateId], references: [id], onDelete: SetNull)
+  
+  // Custom Default Template Content (for edited templates)
+  customDefaultSubject String?
+  customDefaultBody    String?
 
   // Trial Management
   trialStartDate    DateTime?

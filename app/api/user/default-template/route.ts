@@ -29,10 +29,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // If user has custom default template content, use that instead of original
+    let template = user.defaultTemplate;
+    if (template && (user.customDefaultSubject || user.customDefaultBody)) {
+      template = {
+        ...template,
+        subject: user.customDefaultSubject || template.subject,
+        body: user.customDefaultBody || template.body,
+      };
+    }
+
     return NextResponse.json({
       success: true,
       hasDefaultTemplate: !!user.defaultTemplateId,
-      defaultTemplate: user.defaultTemplate,
+      template: template, // Changed from defaultTemplate to template
     });
   } catch (error) {
     console.error("Fetch default template error:", error);
@@ -55,7 +65,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { templateId } = await req.json();
+    const { templateId, customSubject, customBody } = await req.json();
 
     if (!templateId) {
       return NextResponse.json(
@@ -92,6 +102,9 @@ export async function POST(req: NextRequest) {
       where: { id: user.id },
       data: {
         defaultTemplateId: templateId,
+        // Store custom subject and body if provided (for edited templates)
+        ...(customSubject && { customDefaultSubject: customSubject }),
+        ...(customBody && { customDefaultBody: customBody }),
       },
     });
 

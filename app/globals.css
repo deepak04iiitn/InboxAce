@@ -119,3 +119,72 @@
   }
 }
 
+
+/* Custom Quill Editor Styles */
+.custom-quill-job .ql-container {
+  min-height: 300px;
+  font-size: 14px;
+  background: rgba(31, 41, 55, 0.5);
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.custom-quill-job .ql-toolbar {
+  background: rgba(31, 41, 55, 0.7);
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+  border-color: rgba(55, 65, 81, 0.5);
+}
+
+.custom-quill-job .ql-editor {
+  color: white;
+}
+
+.custom-quill-job .ql-editor.ql-blank::before {
+  color: rgba(156, 163, 175, 0.7);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.7);
+}
+
+/* Table Sticky Header */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Responsive Table */
+@media (max-width: 768px) {
+  .min-w-\[150px\] {
+    min-width: 120px;
+  }
+  
+  .min-w-\[200px\] {
+    min-width: 150px;
+  }
+}
+
+

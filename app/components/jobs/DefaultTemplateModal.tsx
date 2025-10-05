@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileText, Search, Check, Star } from "lucide-react";
+import { X, FileText, Search, Check, Eye, Edit3 } from "lucide-react";
 
 interface DefaultTemplateModalProps {
   isOpen: boolean;
@@ -25,6 +25,10 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [editedSubject, setEditedSubject] = useState("");
+  const [editedBody, setEditedBody] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -63,10 +67,19 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
 
     try {
       setSubmitting(true);
+      
+      // Get the selected template (which might be edited)
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      
       const response = await fetch("/api/user/default-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId: selectedTemplateId }),
+        body: JSON.stringify({ 
+          templateId: selectedTemplateId,
+          // If the template was edited, send the custom version
+          customSubject: selectedTemplate?.subject,
+          customBody: selectedTemplate?.body
+        }),
       });
 
       const data = await response.json();
@@ -84,11 +97,46 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
     }
   };
 
+  const handlePreviewTemplate = (template: Template) => {
+    setPreviewTemplate(template);
+  };
+
+  const handleEditTemplate = (template: Template) => {
+    setEditingTemplate(template);
+    setEditedSubject(template.subject);
+    setEditedBody(template.body);
+  };
+
+  const handleSaveEditedTemplate = () => {
+    if (!editingTemplate) return;
+    
+    // Update the templates array with the edited version
+    setTemplates(prev => prev.map(t => 
+      t.id === editingTemplate.id 
+        ? { ...t, subject: editedSubject, body: editedBody }
+        : t
+    ));
+    
+    // If this was the selected template, update the selection
+    if (selectedTemplateId === editingTemplate.id) {
+      // The edited template is now the selected one
+    }
+    
+    setEditingTemplate(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTemplate(null);
+    setEditedSubject("");
+    setEditedBody("");
+  };
+
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       <motion.div
+        key="main-modal"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -116,7 +164,7 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
               </div>
               <button
                 onClick={onClose}
-                className="text-gray-400 hover:text-white transition p-2 hover:bg-gray-800 rounded-lg"
+                className="text-gray-400 hover:text-white transition cursor-pointer p-2 hover:bg-gray-800 rounded-lg"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -186,10 +234,6 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
                         <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded-full border border-blue-600/30">
                           {template.category}
                         </span>
-                        <div className="flex items-center gap-1 text-yellow-500 text-xs">
-                          <Star className="w-3 h-3 fill-current" />
-                          <span>{template.rating?.toFixed(1) || "0.0"}</span>
-                        </div>
                       </div>
 
                       <h3 className="text-lg font-bold text-white mb-2 line-clamp-1">
@@ -210,10 +254,34 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
                         </p>
                       </div>
 
-                      {/* Stats */}
-                      <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-                        <span>{template.usageCount} uses</span>
-                        <span>{template.likes} likes</span>
+                      {/* Stats and Actions */}
+                      <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{template.usageCount} uses</span>
+                          <span>{template.likes} likes</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePreviewTemplate(template);
+                            }}
+                            className="cursor-pointer p-1.5 hover:bg-blue-600/20 text-blue-400 rounded transition"
+                            title="View Full Template"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditTemplate(template);
+                            }}
+                            className="cursor-pointer p-1.5 hover:bg-purple-600/20 text-purple-400 rounded transition"
+                            title="Edit Template"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -234,14 +302,14 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
             <div className="flex gap-3">
               <button
                 onClick={onClose}
-                className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg transition"
+                className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSetDefault}
                 disabled={!selectedTemplateId || submitting}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="cursor-pointer bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? "Setting..." : "Set as Default"}
               </button>
@@ -249,6 +317,163 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Template Preview Modal */}
+      {previewTemplate && (
+        <motion.div
+          key="preview-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-60 flex items-center justify-center p-4"
+          onClick={() => setPreviewTemplate(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+          >
+            {/* Gmail-style Header */}
+            <div className="bg-gray-100 border-b border-gray-300 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-bold">G</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Gmail</h3>
+                  <p className="text-xs text-gray-600">Template Preview</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewTemplate(null)}
+                className="text-gray-600 hover:text-gray-900 cursor-pointer transition p-2 hover:bg-gray-200 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Email Content */}
+            <div className="p-6 bg-white overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-gray-700">From:</span>
+                  <span className="text-sm text-gray-600">Your Name &lt;your.email@example.com&gt;</span>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-gray-700">To:</span>
+                  <span className="text-sm text-gray-600">{`{{recipientName}} <{{recipientEmail}}>`}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">Subject:</span>
+                  <span className="text-sm text-gray-900 font-medium">{previewTemplate.subject}</span>
+                </div>
+              </div>
+
+              <div className="prose max-w-none">
+                <div 
+                  className="text-gray-900 whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={{ 
+                    __html: previewTemplate.body.replace(/\n/g, '<br>') 
+                  }}
+                />
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Template Edit Modal */}
+      {editingTemplate && (
+        <motion.div
+          key="edit-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-60 flex items-center justify-center p-4"
+          onClick={handleCancelEdit}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-gray-900 border border-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-b border-gray-800 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                    <Edit3 className="w-6 h-6 text-purple-400" />
+                    Edit Template: {editingTemplate.name}
+                  </h3>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Your changes will only affect this session. The original template remains unchanged.
+                  </p>
+                </div>
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-gray-400 hover:text-white transition p-2 hover:bg-gray-800 rounded-lg"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Edit Form */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Subject Line
+                  </label>
+                  <input
+                    type="text"
+                    value={editedSubject}
+                    onChange={(e) => setEditedSubject(e.target.value)}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Enter email subject..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Email Body
+                  </label>
+                  <textarea
+                    value={editedBody}
+                    onChange={(e) => setEditedBody(e.target.value)}
+                    rows={12}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    placeholder="Enter email body..."
+                  />
+                  <div className="text-xs text-gray-500 mt-2">
+                    Available variables: {`{{recipientName}}, {{recipientGender}}, {{position}}, {{company}}, {{yourName}}, {{yourEmail}}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-900 border-t border-gray-800 p-6 flex items-center justify-end gap-3">
+              <button
+                onClick={handleCancelEdit}
+                className="bg-gray-700 hover:bg-gray-600 cursor-pointer text-white px-6 py-2.5 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditedTemplate}
+                className="cursor-pointer bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2.5 rounded-lg transition"
+              >
+                Save Changes
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }

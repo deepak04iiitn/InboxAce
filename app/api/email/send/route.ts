@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/db";
 import nodemailer from "nodemailer";
 import { getValidAccessToken } from "@/lib/token-refresh";
+import { replaceVariables, preserveHtmlFormatting } from "@/lib/email-utils";
 
 
 export async function POST(req: NextRequest) {
@@ -186,16 +187,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 11. Send email
+    // 11. Process email content with variable replacement (backup)
+    let finalSubject = subject;
+    let finalBody = htmlBody;
+    
+    // If the content still contains variables, replace them
+    if (subject.includes('{{') || htmlBody.includes('{{')) {
+      finalSubject = replaceVariables(subject, job, user);
+      finalBody = replaceVariables(htmlBody, job, user);
+    }
+    
+    // Ensure proper HTML formatting
+    finalBody = preserveHtmlFormatting(finalBody);
+
+    // 12. Send email
     try {
       const info = await transporter.sendMail({
         from: `${user.name} <${emailAccount.email}>`,
         to: job.recipientEmail,
-        subject,
-        html: htmlBody,
+        subject: finalSubject,
+        html: finalBody,
       });
 
-      // 12. Update email status to sent
+      // 13. Update email status to sent
       await prisma.email.update({
         where: { id: email.id },
         data: {
@@ -205,7 +219,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 13. Update job status
+      // 14. Update job status
       await prisma.job.update({
         where: { id: jobId },
         data: {
@@ -216,7 +230,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 14. Update email account sent count
+      // 15. Update email account sent count
       await prisma.emailAccount.update({
         where: { id: emailAccount.id },
         data: {
@@ -224,10 +238,10 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 15. Update analytics
+      // 16. Update analytics
       await updateAnalytics(user.id, "emailsSent");
 
-      // 16. Check for badge achievements
+      // 17. Check for badge achievements
       await checkBadges(user.id);
 
       return NextResponse.json({
