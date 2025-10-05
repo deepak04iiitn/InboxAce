@@ -17,6 +17,7 @@ import {
   Activity,
   Target,
   Zap,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import JobForm from "./JobForm";
@@ -24,6 +25,8 @@ import JobDetailsDialog from "./JobDetailsDialog";
 import BulkImportDialog from "./BulkImportDialog";
 import BatchJobDialog from "./BatchJobDialog";
 import EmailAccountStatus from "./EmailAccountStatus";
+import DefaultTemplateModal from "./DefaultTemplateModal";
+
 
 interface Job {
   id: string;
@@ -51,7 +54,13 @@ export default function JobTracker() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [hasEmailAccount, setHasEmailAccount] = useState(false);
 
+  const [showDefaultTemplateModal, setShowDefaultTemplateModal] = useState(false);
+  const [hasDefaultTemplate, setHasDefaultTemplate] = useState(false);
+  const [checkingDefaultTemplate, setCheckingDefaultTemplate] = useState(true);
+
+
   useEffect(() => {
+    checkDefaultTemplate();
     fetchJobs();
     checkEmailStatus();
   }, [statusFilter]);
@@ -84,12 +93,50 @@ export default function JobTracker() {
     }
   };
 
+  const checkDefaultTemplate = async () => {
+    try {
+      const response = await fetch('/api/user/default-template');
+      const data = await response.json();
+      
+      if (data.success) {
+        setHasDefaultTemplate(data.hasDefaultTemplate);
+        
+        // Show modal if user doesn't have a default template
+        if (!data.hasDefaultTemplate && hasEmailAccount) {
+          setShowDefaultTemplateModal(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check default template:', error);
+    } finally {
+      setCheckingDefaultTemplate(false);
+    }
+  };
+
+  const handleDefaultTemplateSelected = () => {
+    setHasDefaultTemplate(true);
+    toast.success("Default template set! You can now create jobs.");
+  };
+
+  // Update handleAddJob to check for default template
   const handleAddJob = () => {
     if (!hasEmailAccount) {
       toast.error("Please connect your email account first");
       return;
     }
+    
+    if (!hasDefaultTemplate) {
+      toast.error("Please select a default template first");
+      setShowDefaultTemplateModal(true);
+      return;
+    }
+    
     setShowJobForm(true);
+  };
+
+  // Add a settings button to change default template
+  const handleChangeDefaultTemplate = () => {
+    setShowDefaultTemplateModal(true);
   };
 
   const handleBulkImport = () => {
@@ -182,6 +229,19 @@ export default function JobTracker() {
             </div>
 
             <div className="flex flex-wrap gap-3">
+
+              {hasDefaultTemplate && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleChangeDefaultTemplate}
+                  className="flex items-center gap-2 bg-gray-700/50 hover:bg-gray-700 text-gray-300 px-4 py-2.5 rounded-xl border border-gray-600 transition"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="hidden sm:inline">Change Template</span>
+                </motion.button>
+              )}
+
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -215,6 +275,18 @@ export default function JobTracker() {
                 Add Job
               </motion.button>
             </div>
+
+            {/* Add DefaultTemplateModal */}
+            <AnimatePresence>
+              {showDefaultTemplateModal && (
+                <DefaultTemplateModal
+                  isOpen={showDefaultTemplateModal}
+                  onClose={() => setShowDefaultTemplateModal(false)}
+                  onTemplateSelected={handleDefaultTemplateSelected}
+                />
+              )}
+            </AnimatePresence>
+
           </div>
         </motion.div>
 

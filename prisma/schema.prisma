@@ -77,6 +77,10 @@ model User {
   role          UserRole      @default(NORMAL)
   pricingTier   PricingTier   @default(FREE)
 
+  // Default Template Selection
+  defaultTemplateId String?
+  defaultTemplate   EmailTemplate? @relation("UserDefaultTemplate", fields: [defaultTemplateId], references: [id], onDelete: SetNull)
+
   // Trial Management
   trialStartDate    DateTime?
   trialEndDate      DateTime?
@@ -92,7 +96,7 @@ model User {
   // Profile
   location      String?
   profileImage  String?
-  emailVerified  DateTime? // ADD THIS
+  emailVerified  DateTime?
 
   // Timestamps
   createdAt     DateTime      @default(now())
@@ -105,21 +109,19 @@ model User {
   // Relations
   emailAccounts     EmailAccount[]
   jobs              Job[]
-  templates         EmailTemplate[]
+  templates         EmailTemplate[] @relation("UserCreatedTemplates")
   campaigns         Campaign[]
   analytics         Analytics[]
   badges            UserBadge[]
   workspaceMemberships WorkspaceMember[]
   ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
   activities        Activity[]
-
-  // Added opposite relation field for JobBatch
   jobBatches        JobBatch[]
-
   accounts          Account[]
 
   @@index([email])
   @@index([pricingTier])
+  @@index([defaultTemplateId])
 }
 
 // ==================== EMAIL ACCOUNTS ====================
@@ -195,8 +197,8 @@ model JobBatch {
   // Relations
   jobs            Job[]
 
-  // Added opposite relation field on User (in User model)
-  // Added opposite relation field on EmailTemplate (in EmailTemplate model)
+  @@index([userId])
+  @@index([templateId])
 }
 
 // Individual Jobs
@@ -244,7 +246,6 @@ model Job {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  // Added relation field for EmailTemplate (opposite of EmailTemplate.jobs)
   templateId      String?
   template        EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
@@ -258,6 +259,7 @@ model Job {
   @@index([status])
   @@index([customScheduledFor])
   @@index([emailType])
+  @@index([templateId])
 }
 
 // Job Comments
@@ -320,7 +322,7 @@ model Email {
 model EmailTemplate {
   id            String          @id @default(uuid())
   userId        String?
-  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?           @relation("UserCreatedTemplates", fields: [userId], references: [id], onDelete: Cascade)
 
   name          String
   subject       String
@@ -349,14 +351,15 @@ model EmailTemplate {
   // Relations
   ratings       TemplateRating[]
   campaigns     Campaign[]
-
-  // Relation to Job with opposite in Job.template
   jobs          Job[]
-
-  // Added opposite relation field for JobBatch.selectedTemplate
   jobBatches    JobBatch[]
-
   templateLikes TemplateLike[]
+  usersWithDefault User[] @relation("UserDefaultTemplate")
+
+  @@index([userId])
+  @@index([category])
+  @@index([isPublic])
+  @@index([isCommunity])
 }
 
 model TemplateRating {
@@ -374,8 +377,6 @@ model TemplateRating {
   @@index([templateId])
 }
 
-
-// Add new model for template likes
 model TemplateLike {
   id          String          @id @default(uuid())
   templateId  String
@@ -473,6 +474,8 @@ model Workspace {
 
   members       WorkspaceMember[]
   jobs          Job[]
+
+  @@index([ownerId])
 }
 
 model WorkspaceMember {
@@ -537,7 +540,7 @@ model Activity {
   @@index([createdAt])
 }
 
-
+// ==================== NEXT AUTH ====================
 
 model Account {
   id                String  @id @default(cuid())
