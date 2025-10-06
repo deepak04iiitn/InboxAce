@@ -10,6 +10,7 @@ import {
   Upload,
   Trash2,
   FileText,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
@@ -22,6 +23,7 @@ import EmailAccountStatus from "../jobs/EmailAccountStatus";
 import BulkImportDialog from "../jobs/BulkImportDialog";
 import DefaultTemplateModal from "../jobs/DefaultTemplateModal";
 import { getProcessedEmailContent, preserveHtmlFormatting } from "@/lib/email-utils";
+import PremiumUpgradeModal from "./PremiumUpgradeModal";
 
 interface Job {
   id: string;
@@ -68,6 +70,7 @@ export default function JobTrackerSpreadsheet() {
   const [defaultTemplate, setDefaultTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasEmailAccount, setHasEmailAccount] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -77,23 +80,35 @@ export default function JobTrackerSpreadsheet() {
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showDefaultTemplateModal, setShowDefaultTemplateModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [hasDefaultTemplate, setHasDefaultTemplate] = useState(false);
   const [checkingDefaultTemplate, setCheckingDefaultTemplate] = useState(true);
   
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    checkDefaultTemplate(); // This now also sets the default template
+    checkDefaultTemplate();
     fetchTemplates();
-    // fetchJobs will be called after templates are loaded
+    checkPremiumStatus();
   }, []);
 
-  // Fetch jobs after templates are loaded
   useEffect(() => {
     if (templates.length > 0 || defaultTemplate) {
       fetchJobs();
     }
   }, [templates, defaultTemplate]);
+
+  const checkPremiumStatus = async () => {
+    try {
+      const response = await fetch('/api/user/profile');
+      const data = await response.json();
+      if (data.success) {
+        setIsPremium(data.user.pricingTier !== 'FREE');
+      }
+    } catch (error) {
+      console.error('Failed to check premium status:', error);
+    }
+  };
 
   const checkDefaultTemplate = async () => {
     try {
@@ -103,12 +118,10 @@ export default function JobTrackerSpreadsheet() {
       if (data.success) {
         setHasDefaultTemplate(data.hasDefaultTemplate);
         
-        // Also set the default template if it exists
         if (data.template) {
           setDefaultTemplate(data.template);
         }
         
-        // Show modal if user doesn't have a default template and has email connected
         if (!data.hasDefaultTemplate && hasEmailAccount) {
           setShowDefaultTemplateModal(true);
         }
@@ -122,8 +135,16 @@ export default function JobTrackerSpreadsheet() {
 
   const handleDefaultTemplateSelected = async () => {
     setHasDefaultTemplate(true);
-    await checkDefaultTemplate(); // Refresh the default template
+    await checkDefaultTemplate();
     toast.success("Default template set! New rows will use this template.");
+  };
+
+  const handleImportClick = () => {
+    if (!isPremium) {
+      setShowPremiumModal(true);
+      return;
+    }
+    setShowImportDialog(true);
   };
 
   const fetchJobs = async () => {
@@ -132,9 +153,7 @@ export default function JobTrackerSpreadsheet() {
       const response = await fetch("/api/jobs");
       const data = await response.json();
       if (data.success) {
-        // Process jobs to include template data
         const processedJobs = data.jobs.map((job: any) => {
-          // Find the template for this job
           const template = templates.find(t => t.id === job.templateId) || 
                           (defaultTemplate?.id === job.templateId ? defaultTemplate : null);
           return {
@@ -163,18 +182,6 @@ export default function JobTrackerSpreadsheet() {
     }
   };
 
-  const fetchDefaultTemplate = async () => {
-    try {
-      const response = await fetch("/api/user/default-template");
-      const data = await response.json();
-      if (data.success && data.template) {
-        setDefaultTemplate(data.template);
-      }
-    } catch (error) {
-      console.error("Failed to load default template:", error);
-    }
-  };
-
   const handleAddRow = () => {
     if (!hasEmailAccount) {
       toast.error("Please connect your email account first");
@@ -187,7 +194,6 @@ export default function JobTrackerSpreadsheet() {
       return;
     }
 
-    // Ensure we have a default template before creating the job
     if (!defaultTemplate) {
       toast.error("Default template not loaded. Please try again.");
       return;
@@ -208,7 +214,7 @@ export default function JobTrackerSpreadsheet() {
       customScheduledFor: "",
       customMaxFollowUps: 0,
       followUpsSent: 0,
-      templateId: defaultTemplate.id, // Remove the fallback to empty string
+      templateId: defaultTemplate.id,
       notes: "",
       tags: [],
       customLinks: [],
@@ -222,7 +228,6 @@ export default function JobTrackerSpreadsheet() {
     }, 100);
   };
 
-  // CRITICAL FIX: Memoize to prevent re-renders
   const handleCellUpdate = useCallback((jobId: string, field: string, value: any) => {
     setJobs(prevJobs => {
       const jobIndex = prevJobs.findIndex((j) => j.id === jobId);
@@ -231,7 +236,6 @@ export default function JobTrackerSpreadsheet() {
       const updatedJobs = [...prevJobs];
       updatedJobs[jobIndex] = { ...updatedJobs[jobIndex], [field]: value };
       
-      // Async save without blocking UI
       setTimeout(async () => {
         if (jobId.startsWith("temp-")) {
           const job = updatedJobs[jobIndex];
@@ -349,7 +353,6 @@ export default function JobTrackerSpreadsheet() {
     }
   
     try {
-      // Process email content with variable replacement
       const { subject, body } = getProcessedEmailContent(job, session.user);
       const formattedBody = preserveHtmlFormatting(body);
 
@@ -549,7 +552,6 @@ export default function JobTrackerSpreadsheet() {
           <EmailAccountStatus onStatusChange={setHasEmailAccount} />
         </div>
 
-        {/* Default Template Status Banner */}
         {!checkingDefaultTemplate && !hasDefaultTemplate && hasEmailAccount && (
           <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
             <div className="flex items-center justify-between">
@@ -611,9 +613,19 @@ export default function JobTrackerSpreadsheet() {
               <option value="REPLIED" className="cursor-pointer">Replied</option>
             </select>
 
-            <button onClick={() => setShowImportDialog(true)} className="cursor-pointer flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition">
+            <button 
+              onClick={handleImportClick} 
+              className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg transition relative ${
+                isPremium 
+                  ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                  : 'bg-gradient-to-r from-purple-600/20 to-pink-600/20 hover:from-purple-600/30 hover:to-pink-600/30 border border-purple-500/50 text-purple-300'
+              }`}
+            >
               <Upload size={20} />
               Import
+              {!isPremium && (
+                <Crown size={14} className="text-yellow-400" />
+              )}
             </button>
             <button onClick={handleExport} className="cursor-pointer flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition">
               <Download size={20} />
@@ -687,6 +699,16 @@ export default function JobTrackerSpreadsheet() {
             isOpen={showDefaultTemplateModal}
             onClose={() => setShowDefaultTemplateModal(false)}
             onTemplateSelected={handleDefaultTemplateSelected}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPremiumModal && (
+          <PremiumUpgradeModal
+            isOpen={showPremiumModal}
+            onClose={() => setShowPremiumModal(false)}
+            feature="Bulk CSV Import"
           />
         )}
       </AnimatePresence>

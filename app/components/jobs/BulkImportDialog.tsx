@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { X, Upload, Download, AlertCircle, CheckCircle } from "lucide-react";
+import { X, Upload, Download, AlertCircle, CheckCircle, Info, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 interface BulkImportDialogProps {
@@ -31,9 +31,9 @@ export default function BulkImportDialog({
   };
 
   const downloadTemplate = () => {
-    const csvContent = `recipientName,recipientEmail,recipientGender,position,company,emailType,customSubject,customBody,notes,tags
-John Doe,john@company.com,MALE,Software Engineer,Tech Corp,APPLICATION,Application for Software Engineer,Dear John...,Referred by Sarah,tech;urgent
-Jane Smith,jane@startup.io,FEMALE,Product Manager,Startup Inc,APPLICATION,,,Met at conference,startup;pm`;
+    const csvContent = `recipientName,recipientEmail,position,company,recipientGender,emailType,customSubject,customBody,notes,tags
+John Doe,john@company.com,Software Engineer,Tech Corp,MALE,APPLICATION,Application for Software Engineer,Dear John...,Referred by Sarah,tech;urgent
+Jane Smith,jane@startup.io,Product Manager,Startup Inc,FEMALE,APPLICATION,,,Met at conference,startup;pm`;
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
@@ -92,24 +92,24 @@ Jane Smith,jane@startup.io,FEMALE,Product Manager,Startup Inc,APPLICATION,,,Met 
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700/50 rounded-2xl max-w-2xl w-full"
+        className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700/50 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="border-b border-gray-700/50 p-6 flex items-center justify-between">
+        <div className="border-b border-gray-700/50 p-6 flex items-center justify-between sticky top-0 bg-gray-900/95 backdrop-blur-sm z-10">
           <div className="flex items-center gap-3">
             <Upload className="w-6 h-6 text-purple-400" />
             <div>
               <h2 className="text-2xl font-bold text-white">
-                Bulk Import Jobs
+                Flexible Bulk Import
               </h2>
               <p className="text-gray-400 text-sm">
-                Import multiple jobs from CSV
+                Import from any CSV - we'll auto-map your columns
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition"
+            className="text-gray-400 hover:text-white transition cursor-pointer"
           >
             <X className="w-6 h-6" />
           </button>
@@ -124,40 +124,111 @@ Jane Smith,jane@startup.io,FEMALE,Product Manager,Startup Inc,APPLICATION,,,Met 
                 <Upload className="w-5 h-5 text-white" />
               </div>
               <div>
-                <div className="text-white font-semibold">Premium Feature</div>
+                <div className="text-white font-semibold">Smart Column Mapping</div>
                 <div className="text-gray-300 text-sm">
-                  Bulk import is available for Plus and Pro users
+                  Upload any CSV and we'll automatically match columns to fields
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Instructions */}
+          {/* How it Works */}
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="space-y-2">
+                <h3 className="text-blue-300 font-semibold">How Smart Import Works</h3>
+                <div className="text-gray-300 text-sm space-y-1">
+                  <p>• Upload a CSV with any column names</p>
+                  <p>• We automatically detect and map matching fields</p>
+                  <p>• Required fields: recipientName, recipientEmail, position, company</p>
+                  <p>• Optional fields will use your default template if not provided</p>
+                  <p>• Unrecognized columns are simply ignored</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Supported Column Names */}
           <div className="space-y-3">
-            <h3 className="text-white font-semibold">How to use:</h3>
-            <ol className="list-decimal list-inside space-y-2 text-gray-400 text-sm">
-              <li>Download the CSV template</li>
-              <li>Fill in your job details (required: recipientName, recipientEmail, position, company)</li>
-              <li>Upload the completed CSV file</li>
-              <li>Review and import</li>
-            </ol>
+            <h3 className="text-white font-semibold flex items-center gap-2">
+              <span>Recognized Column Names</span>
+              <span className="text-xs text-gray-400">(case-insensitive)</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-green-400 font-semibold mb-2">✓ Recipient Name</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>recipientName, name, recipient, contact_name</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-green-400 font-semibold mb-2">✓ Email</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>recipientEmail, email, contact_email</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-green-400 font-semibold mb-2">✓ Position</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>position, title, job_title, role</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-green-400 font-semibold mb-2">✓ Company</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>company, organization, org</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-blue-400 font-semibold mb-2">⭘ Subject</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>customSubject, subject, email_subject</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-blue-400 font-semibold mb-2">⭘ Body</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>customBody, body, email_body, message</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-blue-400 font-semibold mb-2">⭘ Tags</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>tags, tag, labels (comma separated)</div>
+                </div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+                <div className="text-blue-400 font-semibold mb-2">⭘ Notes</div>
+                <div className="text-gray-400 text-xs space-y-1">
+                  <div>notes, note, comments</div>
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">
+              <span className="text-green-400">✓</span> = Required fields | 
+              <span className="text-blue-400"> ⭘</span> = Optional fields
+            </div>
           </div>
 
           {/* Download Template */}
           <button
             onClick={downloadTemplate}
-            className="w-full flex items-center justify-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 text-blue-300 px-4 py-3 rounded-lg transition"
+            className="cursor-pointer w-full flex items-center justify-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 text-blue-300 px-4 py-3 rounded-lg transition"
           >
             <Download className="w-4 h-4" />
-            Download CSV Template
+            Download Sample Template
           </button>
 
           {/* File Upload */}
-          <div className="border-2 border-dashed border-gray-700/50 rounded-lg p-8">
+          <div className="border-2 border-dashed border-gray-700/50 rounded-lg p-8 hover:border-purple-500/50 transition">
             <div className="text-center">
               <Upload className="w-12 h-12 text-gray-500 mx-auto mb-4" />
               <div className="text-white mb-2">
-                {file ? file.name : "Choose a CSV file"}
+                {file ? file.name : "Choose any CSV file"}
+              </div>
+              <div className="text-gray-500 text-sm mb-4">
+                We'll automatically detect and map your columns
               </div>
               <input
                 type="file"
@@ -180,22 +251,68 @@ Jane Smith,jane@startup.io,FEMALE,Product Manager,Startup Inc,APPLICATION,,,Met 
             <button
               onClick={handleUpload}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-3 rounded-lg transition disabled:opacity-50"
+              className="cursor-pointer w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-3 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? "Importing..." : "Import Jobs"}
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-5 h-5" />
+                  Import Jobs
+                </>
+              )}
             </button>
           )}
 
           {/* Results */}
           {result && (
             <div className="space-y-3">
+              {/* Success Message */}
               <div className="flex items-center gap-3 bg-green-500/20 border border-green-500/50 rounded-lg p-4">
-                <CheckCircle className="w-5 h-5 text-green-400" />
+                <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
                 <div className="text-green-300">
                   Successfully imported {result.imported} jobs
                 </div>
               </div>
 
+              {/* Column Mapping Info */}
+              {result.mapping && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                  <div className="text-blue-300 font-semibold mb-3 flex items-center gap-2">
+                    <ArrowRight className="w-4 h-4" />
+                    Column Mapping
+                  </div>
+                  <div className="space-y-2">
+                    {result.mapping.mapped.map((mapping: any, index: number) => (
+                      <div key={index} className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-400">{mapping.csvColumn}</span>
+                        <ArrowRight className="w-3 h-3 text-blue-400" />
+                        <span className="text-blue-300">{mapping.dbField}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {result.warnings && result.warnings.length > 0 && (
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-400" />
+                    <div className="text-yellow-300 font-semibold">Warnings</div>
+                  </div>
+                  {result.warnings.map((warning: any, index: number) => (
+                    <div key={index} className="text-sm text-yellow-300 mt-2">
+                      {warning.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Errors */}
               {result.errors && result.errors.length > 0 && (
                 <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-3">
@@ -226,10 +343,10 @@ Jane Smith,jane@startup.io,FEMALE,Product Manager,Startup Inc,APPLICATION,,,Met 
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-700/50 p-6 flex justify-end">
+        <div className="border-t border-gray-700/50 p-6 flex justify-end sticky bottom-0 bg-gray-900/95 backdrop-blur-sm">
           <button
             onClick={onClose}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition"
+            className="bg-gray-700 hover:bg-gray-600 text-white cursor-pointer px-6 py-3 rounded-lg transition"
           >
             Close
           </button>
