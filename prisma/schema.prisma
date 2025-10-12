@@ -466,6 +466,7 @@ model Workspace {
   owner         User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   description   String?
+  inviteCode    String            @unique @default("WS-TEMP")
 
   totalEmailsSent   Int           @default(0)
   totalReplies      Int           @default(0)
@@ -480,6 +481,7 @@ model Workspace {
   jobs          Job[]
 
   @@index([ownerId])
+  @@index([inviteCode])
 }
 
 model WorkspaceMember {
@@ -493,6 +495,7 @@ model WorkspaceMember {
   role          WorkspaceRole @default(CONTRIBUTOR)
   leadsAdded    Int           @default(0)
   emailsSent    Int           @default(0)
+  repliesReceived Int         @default(0)
 
   joinedAt      DateTime      @default(now())
 

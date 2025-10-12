@@ -39,7 +39,7 @@ export default function Header() {
     { name: "Pricing", href: "#pricing" },
     { name: "Templates", href: "/templates/community", icon: Layout },
     { name: "Dashboard", href: "/dashboard/jobs-tracker", icon: MailCheck },
-    { name: "ReachHub", href: "#reachhub" },
+    { name: "ReachHub", href: "/reachhub/workspace" },
     { name: "InboxAce CLI", href: "#cli", badge: "Soon" },
   ];
 
