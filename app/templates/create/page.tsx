@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import TemplateBuilder from "@/app/components/templates/TemplateBuilder";
+import EnhancedTemplateBuilder from "@/app/components/templates/EnhancedTemplateBuilder";
 
 export default async function CreateTemplatePage() {
   const session = await getServerSession();
@@ -9,5 +9,5 @@ export default async function CreateTemplatePage() {
     redirect("/api/auth/signin?callbackUrl=/templates/create");
   }
 
-  return <TemplateBuilder />;
+  return <EnhancedTemplateBuilder />;
 }

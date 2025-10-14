@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import nodemailer from "nodemailer";
+import { replaceVariables } from "@/lib/email-utils";
 
 // This should be called by a cron job
 export async function GET(req: NextRequest) {
@@ -266,16 +267,6 @@ async function processFollowUps() {
       console.error(`Error processing follow-up for job ${job.id}:`, error);
     }
   }
-}
-
-function replaceVariables(text: string, job: any, user: any): string {
-  return text
-    .replace(/{{recipientName}}/g, job.recipientName)
-    .replace(/{{recipientGender}}/g, job.recipientGender === "MALE" ? "Mr." : job.recipientGender === "FEMALE" ? "Ms." : "")
-    .replace(/{{position}}/g, job.position)
-    .replace(/{{company}}/g, job.company)
-    .replace(/{{yourName}}/g, user.name)
-    .replace(/{{yourEmail}}/g, user.email);
 }
 
 function generateFollowUpBody(job: any): string {

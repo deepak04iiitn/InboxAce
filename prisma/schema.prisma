@@ -64,7 +64,34 @@ enum TemplateCategory {
   SALES
   DESIGN
   CONSULTING
+  HEALTHCARE
+  EDUCATION
+  LEGAL
+  REAL_ESTATE
+  NON_PROFIT
+  ENTERTAINMENT
+  RETAIL
+  MANUFACTURING
+  AGRICULTURE
+  TRANSPORTATION
+  ENERGY
+  TELECOMMUNICATIONS
+  GOVERNMENT
   OTHER
+}
+
+enum TemplateType {
+  APPLICATION
+  REFERRAL_REQUEST
+  FOLLOW_UP
+  THANK_YOU
+  REJECTION_FOLLOW_UP
+  INTERVIEW_FOLLOW_UP
+  NETWORKING
+  COLD_OUTREACH
+  PARTNERSHIP
+  COLLABORATION
+  CUSTOM
 }
 
 // ==================== USER & SUBSCRIPTION ====================
@@ -81,9 +108,17 @@ model User {
   defaultTemplateId String?
   defaultTemplate   EmailTemplate? @relation("UserDefaultTemplate", fields: [defaultTemplateId], references: [id], onDelete: SetNull)
   
+  // Default Follow-up Template Selection
+  defaultFollowUpTemplateId String?
+  defaultFollowUpTemplate   EmailTemplate? @relation("UserDefaultFollowUpTemplate", fields: [defaultFollowUpTemplateId], references: [id], onDelete: SetNull)
+  
   // Custom Default Template Content (for edited templates)
   customDefaultSubject String?
   customDefaultBody    String?
+  
+  // Custom Default Follow-up Template Content
+  customDefaultFollowUpSubject String?
+  customDefaultFollowUpBody    String?
 
   // Trial Management
   trialStartDate    DateTime?
@@ -331,8 +366,10 @@ model EmailTemplate {
   name          String
   subject       String
   body          String          @db.Text
+  description   String?         @db.Text
 
   category      TemplateCategory @default(GENERAL)
+  templateType  TemplateType     @default(APPLICATION)
   tags          String[]         @default([])
 
   isSystemTemplate Boolean      @default(false)
@@ -349,6 +386,11 @@ model EmailTemplate {
   likes           Int             @default(0)
   downloads       Int             @default(0)
 
+  // Template metadata
+  estimatedLength Int?           // Estimated reading time in minutes
+  difficultyLevel String?        // EASY, MEDIUM, ADVANCED
+  targetAudience  String?        // Description of target audience
+
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -359,9 +401,11 @@ model EmailTemplate {
   jobBatches    JobBatch[]
   templateLikes TemplateLike[]
   usersWithDefault User[] @relation("UserDefaultTemplate")
+  usersWithDefaultFollowUp User[] @relation("UserDefaultFollowUpTemplate")
 
   @@index([userId])
   @@index([category])
+  @@index([templateType])
   @@index([isPublic])
   @@index([isCommunity])
 }

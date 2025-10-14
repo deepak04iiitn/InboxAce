@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
       where: { email: session.user.email as string },
       include: {
         defaultTemplate: true,
+        defaultFollowUpTemplate: true,
       },
     });
 
@@ -30,19 +31,33 @@ export async function GET(req: NextRequest) {
     }
 
     // If user has custom default template content, use that instead of original
-    let template = user.defaultTemplate;
-    if (template && (user.customDefaultSubject || user.customDefaultBody)) {
-      template = {
-        ...template,
-        subject: user.customDefaultSubject || template.subject,
-        body: user.customDefaultBody || template.body,
+    let defaultTemplate = user.defaultTemplate;
+    if (defaultTemplate && (user.customDefaultSubject || user.customDefaultBody)) {
+      defaultTemplate = {
+        ...defaultTemplate,
+        subject: user.customDefaultSubject || defaultTemplate.subject,
+        body: user.customDefaultBody || defaultTemplate.body,
+      };
+    }
+
+    // If user has custom follow-up template content, use that instead of original
+    let followUpTemplate = user.defaultFollowUpTemplate;
+    if (followUpTemplate && (user.customDefaultFollowUpSubject || user.customDefaultFollowUpBody)) {
+      followUpTemplate = {
+        ...followUpTemplate,
+        subject: user.customDefaultFollowUpSubject || followUpTemplate.subject,
+        body: user.customDefaultFollowUpBody || followUpTemplate.body,
       };
     }
 
     return NextResponse.json({
       success: true,
       hasDefaultTemplate: !!user.defaultTemplateId,
-      template: template, // Changed from defaultTemplate to template
+      hasDefaultFollowUpTemplate: !!user.defaultFollowUpTemplateId,
+      defaultTemplateId: user.defaultTemplateId,
+      defaultFollowUpTemplateId: user.defaultFollowUpTemplateId,
+      defaultTemplate: defaultTemplate,
+      defaultFollowUpTemplate: followUpTemplate,
     });
   } catch (error) {
     console.error("Fetch default template error:", error);
@@ -65,7 +80,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { templateId, customSubject, customBody } = await req.json();
+    const { templateId, type, customSubject, customBody } = await req.json();
 
     if (!templateId) {
       return NextResponse.json(
@@ -97,20 +112,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update user's default template
+    // Update user's default template based on type
+    const updateData: any = {};
+    
+    if (type === 'followUp') {
+      updateData.defaultFollowUpTemplateId = templateId;
+      // Store custom subject and body if provided (for edited templates)
+      if (customSubject) updateData.customDefaultFollowUpSubject = customSubject;
+      if (customBody) updateData.customDefaultFollowUpBody = customBody;
+    } else {
+      updateData.defaultTemplateId = templateId;
+      // Store custom subject and body if provided (for edited templates)
+      if (customSubject) updateData.customDefaultSubject = customSubject;
+      if (customBody) updateData.customDefaultBody = customBody;
+    }
+
     await prisma.user.update({
       where: { id: user.id },
-      data: {
-        defaultTemplateId: templateId,
-        // Store custom subject and body if provided (for edited templates)
-        ...(customSubject && { customDefaultSubject: customSubject }),
-        ...(customBody && { customDefaultBody: customBody }),
-      },
+      data: updateData,
     });
 
     return NextResponse.json({
       success: true,
-      message: "Default template set successfully",
+      message: `${type === 'followUp' ? 'Follow-up' : 'Default'} template set successfully`,
     });
   } catch (error) {
     console.error("Set default template error:", error);

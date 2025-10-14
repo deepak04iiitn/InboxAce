@@ -10,13 +10,18 @@ interface Template {
   name: string;
   subject: string;
   body: string;
+  description?: string;
   category: string;
+  templateType: string;
   tags: string[];
   usageCount: number;
   rating: number;
   isPublic: boolean;
   isCommunity: boolean;
+  difficultyLevel?: string;
+  targetAudience?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export default function MyTemplates() {
@@ -122,12 +127,22 @@ export default function MyTemplates() {
                 </div>
 
                 <p className="text-sm text-gray-400 mb-4 line-clamp-2">
-                  {template.subject}
+                  {template.description || template.subject}
                 </p>
 
                 <div className="flex items-center gap-4 mb-4 text-xs text-gray-500">
                   <div>Category: {template.category}</div>
+                  <div>Type: {template.templateType?.replace('_', ' ') || 'N/A'}</div>
                   <div>Used: {template.usageCount}×</div>
+                  {template.difficultyLevel && (
+                    <div className={`px-2 py-1 rounded text-xs ${
+                      template.difficultyLevel === 'EASY' ? 'bg-green-600/20 text-green-400' :
+                      template.difficultyLevel === 'MEDIUM' ? 'bg-yellow-600/20 text-yellow-400' :
+                      'bg-red-600/20 text-red-400'
+                    }`}>
+                      {template.difficultyLevel}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
