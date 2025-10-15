@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         sendNow: sendNow ?? true,
         scheduledFor: scheduledFor || null,
         maxFollowUps: maxFollowUps || 0,
-        daysBetweenFollowUps: daysBetweenFollowUps || 3,
+        daysBetweenFollowUps: daysBetweenFollowUps || user.defaultFollowUpInterval || 1,
         totalJobs: jobsData.length,
       },
     });

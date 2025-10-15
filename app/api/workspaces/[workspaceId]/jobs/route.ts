@@ -118,12 +118,21 @@ export async function POST(
 
     const jobData = await req.json();
 
+    // Get workspace to use its default follow-up interval
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: params.workspaceId },
+      select: { defaultFollowUpInterval: true }
+    });
+
     // Create job
     const job = await prisma.job.create({
       data: {
         ...jobData,
         userId: user.id,
         workspaceId: params.workspaceId,
+        // If no custom follow-up settings, use workspace default
+        hasCustomFollowUp: jobData.hasCustomFollowUp || false,
+        customMaxFollowUps: jobData.customMaxFollowUps || null,
       },
       include: {
         user: {

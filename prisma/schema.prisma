@@ -8,7 +8,401 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================== ENUMS ====================
+model User {
+  id                           String            @id @default(uuid())
+  email                        String            @unique
+  name                         String
+  password                     String?           @default("")
+  role                         UserRole          @default(NORMAL)
+  pricingTier                  PricingTier       @default(FREE)
+  trialStartDate               DateTime?
+  trialEndDate                 DateTime?
+  isTrialActive                Boolean           @default(false)
+  hasUsedTrial                 Boolean           @default(false)
+  subscriptionId               String?
+  subscriptionStartDate        DateTime?
+  subscriptionEndDate          DateTime?
+  isSubscriptionActive         Boolean           @default(false)
+  location                     String?
+  profileImage                 String?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+  lastLoginAt                  DateTime?
+  portfolioLinks               String[]          @default([])
+  emailVerified                DateTime?
+  defaultTemplateId            String?
+  customDefaultBody            String?
+  customDefaultSubject         String?
+  customDefaultFollowUpBody    String?
+  customDefaultFollowUpSubject String?
+  defaultFollowUpTemplateId    String?
+  accounts                     Account[]
+  activities                   Activity[]
+  analytics                    Analytics[]
+  campaigns                    Campaign[]
+  emailAccounts                EmailAccount[]
+  templates                    EmailTemplate[]   @relation("UserCreatedTemplates")
+  jobs                         Job[]
+  jobBatches                   JobBatch[]
+  defaultFollowUpTemplate      EmailTemplate?    @relation("UserDefaultFollowUpTemplate", fields: [defaultFollowUpTemplateId], references: [id])
+  defaultTemplate              EmailTemplate?    @relation("UserDefaultTemplate", fields: [defaultTemplateId], references: [id])
+  badges                       UserBadge[]
+  ownedWorkspaces              Workspace[]       @relation("WorkspaceOwner")
+  workspaceMemberships         WorkspaceMember[]
+
+  @@index([email])
+  @@index([pricingTier])
+  @@index([defaultTemplateId])
+}
+
+model EmailAccount {
+  id            String    @id @default(uuid())
+  userId        String
+  email         String
+  provider      String
+  accessToken   String?
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  appPassword   String?
+  isPrimary     Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  dailyLimit    Int       @default(50)
+  sentToday     Int       @default(0)
+  lastResetDate DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sentEmails    Email[]
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+model JobBatch {
+  id                   String         @id @default(uuid())
+  userId               String
+  name                 String
+  description          String?
+  templateId           String?
+  batchSubject         String?
+  batchBody            String?
+  batchLinks           String[]       @default([])
+  sendNow              Boolean        @default(true)
+  scheduledFor         DateTime?
+  maxFollowUps         Int            @default(0)
+  daysBetweenFollowUps Int            @default(3)
+  totalJobs            Int            @default(0)
+  sentCount            Int            @default(0)
+  repliedCount         Int            @default(0)
+  followUpsSentCount   Int            @default(0)
+  isActive             Boolean        @default(true)
+  allSent              Boolean        @default(false)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  jobs                 Job[]
+  selectedTemplate     EmailTemplate? @relation(fields: [templateId], references: [id])
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([templateId])
+}
+
+model Job {
+  id                 String         @id @default(uuid())
+  userId             String
+  workspaceId        String?
+  batchId            String?
+  recipientName      String
+  recipientGender    Gender
+  position           String
+  company            String
+  recipientEmail     String
+  emailType          EmailType
+  customSubject      String?
+  customBody         String?
+  customLinks        String[]       @default([])
+  hasCustomSchedule  Boolean        @default(false)
+  customSendNow      Boolean?
+  customScheduledFor DateTime?
+  hasCustomFollowUp  Boolean        @default(false)
+  customMaxFollowUps Int?
+  followUpsSent      Int            @default(0)
+  status             JobStatus      @default(NOT_SENT)
+  sentAt             DateTime?
+  gotReply           Boolean        @default(false)
+  repliedAt          DateTime?
+  notes              String?
+  tags               String[]       @default([])
+  lastFollowUpAt     DateTime?
+  nextFollowUpAt     DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  templateId         String?
+  emails             Email[]
+  batch              JobBatch?      @relation(fields: [batchId], references: [id])
+  template           EmailTemplate? @relation(fields: [templateId], references: [id])
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace          Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  comments           JobComment[]
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([batchId])
+  @@index([status])
+  @@index([customScheduledFor])
+  @@index([emailType])
+  @@index([templateId])
+}
+
+model JobComment {
+  id        String   @id @default(uuid())
+  jobId     String
+  userId    String
+  userName  String
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model Email {
+  id               String       @id @default(uuid())
+  jobId            String
+  emailAccountId   String
+  subject          String
+  body             String
+  htmlBody         String?
+  status           EmailStatus  @default(PENDING)
+  isFollowUp       Boolean      @default(false)
+  followUpSequence Int          @default(1)
+  sentAt           DateTime?
+  openedAt         DateTime?
+  repliedAt        DateTime?
+  openCount        Int          @default(0)
+  errorMessage     String?
+  retryCount       Int          @default(0)
+  threadId         String?
+  messageId        String?
+  inReplyTo        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  emailAccount     EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  job              Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([emailAccountId])
+  @@index([status])
+  @@index([sentAt])
+}
+
+model EmailTemplate {
+  id                       String           @id @default(uuid())
+  userId                   String?
+  name                     String
+  subject                  String
+  body                     String
+  category                 TemplateCategory @default(GENERAL)
+  tags                     String[]         @default([])
+  isSystemTemplate         Boolean          @default(false)
+  isPublic                 Boolean          @default(false)
+  isShared                 Boolean          @default(false)
+  usageCount               Int              @default(0)
+  rating                   Float            @default(0.0)
+  ratingCount              Int              @default(0)
+  variables                String[]         @default([])
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  createdByName            String?
+  downloads                Int              @default(0)
+  isCommunity              Boolean          @default(false)
+  likes                    Int              @default(0)
+  description              String?
+  difficultyLevel          String?
+  estimatedLength          Int?
+  targetAudience           String?
+  templateType             TemplateType     @default(APPLICATION)
+  campaigns                Campaign[]
+  user                     User?            @relation("UserCreatedTemplates", fields: [userId], references: [id], onDelete: Cascade)
+  jobs                     Job[]
+  jobBatches               JobBatch[]
+  templateLikes            TemplateLike[]
+  ratings                  TemplateRating[]
+  usersWithDefaultFollowUp User[]           @relation("UserDefaultFollowUpTemplate")
+  usersWithDefault         User[]           @relation("UserDefaultTemplate")
+
+  @@index([userId])
+  @@index([category])
+  @@index([templateType])
+  @@index([isPublic])
+  @@index([isCommunity])
+}
+
+model TemplateRating {
+  id         String        @id @default(uuid())
+  templateId String
+  userId     String
+  rating     Int
+  comment    String?
+  createdAt  DateTime      @default(now())
+  template   EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@index([templateId])
+}
+
+model TemplateLike {
+  id         String        @id @default(uuid())
+  templateId String
+  userId     String
+  createdAt  DateTime      @default(now())
+  template   EmailTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@index([templateId])
+  @@index([userId])
+}
+
+model Campaign {
+  id                 String         @id @default(uuid())
+  userId             String
+  templateId         String?
+  name               String
+  description        String?
+  isActive           Boolean        @default(true)
+  enableFollowUp     Boolean        @default(false)
+  followUpDelay      Int            @default(3)
+  maxFollowUps       Int            @default(2)
+  followUpTemplates  String[]       @default([])
+  scheduledStartDate DateTime?
+  scheduledEndDate   DateTime?
+  totalSent          Int            @default(0)
+  totalOpened        Int            @default(0)
+  totalReplies       Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  template           EmailTemplate? @relation(fields: [templateId], references: [id])
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Analytics {
+  id                    String   @id @default(uuid())
+  userId                String
+  date                  DateTime @default(now()) @db.Date
+  emailsSent            Int      @default(0)
+  emailsOpened          Int      @default(0)
+  emailsReplied         Int      @default(0)
+  emailsFailed          Int      @default(0)
+  applicationsSubmitted Int      @default(0)
+  interviewsScheduled   Int      @default(0)
+  followUpsSent         Int      @default(0)
+  openRate              Float    @default(0.0)
+  replyRate             Float    @default(0.0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+}
+
+model Workspace {
+  id                 String            @id @default(uuid())
+  name               String
+  password           String
+  ownerId            String
+  description        String?
+  totalEmailsSent    Int               @default(0)
+  totalReplies       Int               @default(0)
+  totalOpportunities Int               @default(0)
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  inviteCode         String            @unique @default("WS-TEMP")
+  jobs               Job[]
+  owner              User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members            WorkspaceMember[]
+
+  @@index([ownerId])
+  @@index([inviteCode])
+}
+
+model WorkspaceMember {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  userId          String
+  role            WorkspaceRole @default(CONTRIBUTOR)
+  leadsAdded      Int           @default(0)
+  emailsSent      Int           @default(0)
+  joinedAt        DateTime      @default(now())
+  repliesReceived Int           @default(0)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+model Badge {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  description String
+  icon        String
+  requirement Int
+  createdAt   DateTime    @default(now())
+  userBadges  UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(uuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+  badge    Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+}
+
+model Activity {
+  id          String   @id @default(uuid())
+  userId      String
+  action      String
+  description String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
 
 enum UserRole {
   NORMAL
@@ -64,6 +458,7 @@ enum TemplateCategory {
   SALES
   DESIGN
   CONSULTING
+  OTHER
   HEALTHCARE
   EDUCATION
   LEGAL
@@ -77,7 +472,6 @@ enum TemplateCategory {
   ENERGY
   TELECOMMUNICATIONS
   GOVERNMENT
-  OTHER
 }
 
 enum TemplateType {
@@ -92,523 +486,4 @@ enum TemplateType {
   PARTNERSHIP
   COLLABORATION
   CUSTOM
-}
-
-// ==================== USER & SUBSCRIPTION ====================
-
-model User {
-  id            String        @id @default(uuid())
-  email         String        @unique
-  name          String
-  password      String?       @default("")
-  role          UserRole      @default(NORMAL)
-  pricingTier   PricingTier   @default(FREE)
-
-  // Default Template Selection
-  defaultTemplateId String?
-  defaultTemplate   EmailTemplate? @relation("UserDefaultTemplate", fields: [defaultTemplateId], references: [id], onDelete: SetNull)
-  
-  // Default Follow-up Template Selection
-  defaultFollowUpTemplateId String?
-  defaultFollowUpTemplate   EmailTemplate? @relation("UserDefaultFollowUpTemplate", fields: [defaultFollowUpTemplateId], references: [id], onDelete: SetNull)
-  
-  // Custom Default Template Content (for edited templates)
-  customDefaultSubject String?
-  customDefaultBody    String?
-  
-  // Custom Default Follow-up Template Content
-  customDefaultFollowUpSubject String?
-  customDefaultFollowUpBody    String?
-
-  // Trial Management
-  trialStartDate    DateTime?
-  trialEndDate      DateTime?
-  isTrialActive     Boolean       @default(false)
-  hasUsedTrial      Boolean       @default(false)
-
-  // Subscription
-  subscriptionId        String?
-  subscriptionStartDate DateTime?
-  subscriptionEndDate   DateTime?
-  isSubscriptionActive  Boolean       @default(false)
-
-  // Profile
-  location      String?
-  profileImage  String?
-  emailVerified  DateTime?
-
-  // Timestamps
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  lastLoginAt   DateTime?
-
-  // Portfolio Links (max 5)
-  portfolioLinks    String[]      @default([])
-
-  // Relations
-  emailAccounts     EmailAccount[]
-  jobs              Job[]
-  templates         EmailTemplate[] @relation("UserCreatedTemplates")
-  campaigns         Campaign[]
-  analytics         Analytics[]
-  badges            UserBadge[]
-  workspaceMemberships WorkspaceMember[]
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
-  activities        Activity[]
-  jobBatches        JobBatch[]
-  accounts          Account[]
-
-  @@index([email])
-  @@index([pricingTier])
-  @@index([defaultTemplateId])
-}
-
-// ==================== EMAIL ACCOUNTS ====================
-
-model EmailAccount {
-  id            String        @id @default(uuid())
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  email         String
-  provider      String        // "GMAIL" or "OUTLOOK"
-
-  // OAuth Tokens
-  accessToken   String?       @db.Text
-  refreshToken  String?       @db.Text
-  tokenExpiry   DateTime?
-
-  // App Password (fallback)
-  appPassword   String?
-
-  isPrimary     Boolean       @default(false)
-  isActive      Boolean       @default(true)
-
-  // Daily sending limits
-  dailyLimit    Int           @default(50)
-  sentToday     Int           @default(0)
-  lastResetDate DateTime      @default(now())
-
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  // Relations
-  sentEmails    Email[]
-
-  @@unique([userId, email])
-  @@index([userId])
-}
-
-// ==================== JOB TRACKING ====================
-
-model JobBatch {
-  id              String        @id @default(uuid())
-  userId          String
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name            String
-  description     String?       @db.Text
-
-  templateId      String?
-  selectedTemplate EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  batchSubject    String?
-  batchBody       String?       @db.Text
-  batchLinks      String[]      @default([])
-
-  sendNow         Boolean       @default(true)
-  scheduledFor    DateTime?
-
-  maxFollowUps    Int           @default(0)
-  daysBetweenFollowUps Int      @default(3)
-
-  totalJobs       Int           @default(0)
-  sentCount       Int           @default(0)
-  repliedCount    Int           @default(0)
-  followUpsSentCount Int        @default(0)
-
-  isActive        Boolean       @default(true)
-  allSent         Boolean       @default(false)
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  // Relations
-  jobs            Job[]
-
-  @@index([userId])
-  @@index([templateId])
-}
-
-// Individual Jobs
-model Job {
-  id              String        @id @default(uuid())
-  userId          String
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  workspaceId     String?
-  workspace       Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  batchId         String?
-  batch           JobBatch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
-
-  recipientName   String
-  recipientGender Gender
-  position        String
-  company         String
-  recipientEmail  String
-  emailType       EmailType
-
-  customSubject   String?
-  customBody      String?       @db.Text
-  customLinks     String[]      @default([])
-
-  hasCustomSchedule Boolean     @default(false)
-  customSendNow     Boolean?
-  customScheduledFor DateTime?
-
-  hasCustomFollowUp Boolean     @default(false)
-  customMaxFollowUps Int?
-
-  followUpsSent   Int           @default(0)
-  status          JobStatus     @default(NOT_SENT)
-  sentAt          DateTime?
-  gotReply        Boolean       @default(false)
-  repliedAt       DateTime?
-
-  notes           String?       @db.Text
-  tags            String[]      @default([])
-
-  lastFollowUpAt  DateTime?
-  nextFollowUpAt  DateTime?
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  templateId      String?
-  template        EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  // Relations
-  emails          Email[]
-  comments        JobComment[]
-
-  @@index([userId])
-  @@index([workspaceId])
-  @@index([batchId])
-  @@index([status])
-  @@index([customScheduledFor])
-  @@index([emailType])
-  @@index([templateId])
-}
-
-// Job Comments
-model JobComment {
-  id          String    @id @default(uuid())
-  jobId       String
-  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  userId      String
-  userName    String
-
-  comment     String    @db.Text
-
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@index([jobId])
-}
-
-// Emails
-model Email {
-  id              String        @id @default(uuid())
-  jobId           String
-  job             Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  emailAccountId  String
-  emailAccount    EmailAccount  @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-
-  subject         String
-  body            String        @db.Text
-  htmlBody        String?       @db.Text
-
-  status          EmailStatus   @default(PENDING)
-  isFollowUp      Boolean       @default(false)
-  followUpSequence Int          @default(1)
-
-  sentAt          DateTime?
-  openedAt        DateTime?
-  repliedAt       DateTime?
-  openCount       Int           @default(0)
-
-  errorMessage    String?       @db.Text
-  retryCount      Int           @default(0)
-
-  threadId        String?
-  messageId       String?
-  inReplyTo       String?
-
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  @@index([jobId])
-  @@index([emailAccountId])
-  @@index([status])
-  @@index([sentAt])
-}
-
-// ==================== EMAIL TEMPLATES ====================
-
-model EmailTemplate {
-  id            String          @id @default(uuid())
-  userId        String?
-  user          User?           @relation("UserCreatedTemplates", fields: [userId], references: [id], onDelete: Cascade)
-
-  name          String
-  subject       String
-  body          String          @db.Text
-  description   String?         @db.Text
-
-  category      TemplateCategory @default(GENERAL)
-  templateType  TemplateType     @default(APPLICATION)
-  tags          String[]         @default([])
-
-  isSystemTemplate Boolean      @default(false)
-  isPublic      Boolean         @default(false)
-  isShared      Boolean         @default(false)
-  usageCount    Int             @default(0)
-  rating        Float           @default(0.0)
-  ratingCount   Int             @default(0)
-  variables     String[]        @default([])
-
-  isCommunity     Boolean         @default(false)
-  createdByName   String?
-
-  likes           Int             @default(0)
-  downloads       Int             @default(0)
-
-  // Template metadata
-  estimatedLength Int?           // Estimated reading time in minutes
-  difficultyLevel String?        // EASY, MEDIUM, ADVANCED
-  targetAudience  String?        // Description of target audience
-
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-
-  // Relations
-  ratings       TemplateRating[]
-  campaigns     Campaign[]
-  jobs          Job[]
-  jobBatches    JobBatch[]
-  templateLikes TemplateLike[]
-  usersWithDefault User[] @relation("UserDefaultTemplate")
-  usersWithDefaultFollowUp User[] @relation("UserDefaultFollowUpTemplate")
-
-  @@index([userId])
-  @@index([category])
-  @@index([templateType])
-  @@index([isPublic])
-  @@index([isCommunity])
-}
-
-model TemplateRating {
-  id          String          @id @default(uuid())
-  templateId  String
-  template    EmailTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-
-  userId      String
-  rating      Int
-  comment     String?         @db.Text
-
-  createdAt   DateTime        @default(now())
-
-  @@unique([templateId, userId])
-  @@index([templateId])
-}
-
-model TemplateLike {
-  id          String          @id @default(uuid())
-  templateId  String
-  template    EmailTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  
-  userId      String
-  createdAt   DateTime        @default(now())
-  
-  @@unique([templateId, userId])
-  @@index([templateId])
-  @@index([userId])
-}
-
-// ==================== CAMPAIGNS ====================
-
-model Campaign {
-  id            String          @id @default(uuid())
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  templateId    String?
-  template      EmailTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  name          String
-  description   String?         @db.Text
-
-  isActive      Boolean         @default(true)
-
-  enableFollowUp      Boolean   @default(false)
-  followUpDelay       Int       @default(3)
-  maxFollowUps        Int       @default(2)
-  followUpTemplates   String[]  @default([])
-
-  scheduledStartDate  DateTime?
-  scheduledEndDate    DateTime?
-
-  totalSent     Int             @default(0)
-  totalOpened   Int             @default(0)
-  totalReplies  Int             @default(0)
-
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-
-  @@index([userId])
-  @@index([isActive])
-}
-
-// ==================== ANALYTICS ====================
-
-model Analytics {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  date          DateTime  @default(now()) @db.Date
-  emailsSent    Int       @default(0)
-  emailsOpened  Int       @default(0)
-  emailsReplied Int       @default(0)
-  emailsFailed  Int       @default(0)
-
-  applicationsSubmitted Int @default(0)
-  interviewsScheduled   Int @default(0)
-
-  followUpsSent   Int     @default(0)
-  openRate      Float     @default(0.0)
-  replyRate     Float     @default(0.0)
-
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@unique([userId, date])
-  @@index([userId])
-  @@index([date])
-}
-
-// ==================== WORKSPACES ====================
-
-model Workspace {
-  id            String            @id @default(uuid())
-  name          String
-  password      String
-  ownerId       String
-  owner         User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-
-  description   String?
-  inviteCode    String            @unique @default("WS-TEMP")
-
-  totalEmailsSent   Int           @default(0)
-  totalReplies      Int           @default(0)
-  totalOpportunities Int          @default(0)
-
-  isActive      Boolean           @default(true)
-
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-
-  members       WorkspaceMember[]
-  jobs          Job[]
-
-  @@index([ownerId])
-  @@index([inviteCode])
-}
-
-model WorkspaceMember {
-  id            String        @id @default(uuid())
-  workspaceId   String
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  role          WorkspaceRole @default(CONTRIBUTOR)
-  leadsAdded    Int           @default(0)
-  emailsSent    Int           @default(0)
-  repliesReceived Int         @default(0)
-
-  joinedAt      DateTime      @default(now())
-
-  @@unique([workspaceId, userId])
-  @@index([workspaceId])
-  @@index([userId])
-}
-
-// ==================== GAMIFICATION ====================
-
-model Badge {
-  id            String      @id @default(uuid())
-  name          String      @unique
-  description   String
-  icon          String
-  requirement   Int
-  createdAt     DateTime    @default(now())
-  userBadges    UserBadge[]
-}
-
-model UserBadge {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  badgeId       String
-  badge         Badge     @relation(fields: [badgeId], references: [id], onDelete: Cascade)
-
-  earnedAt      DateTime  @default(now())
-
-  @@unique([userId, badgeId])
-  @@index([userId])
-}
-
-// ==================== ACTIVITY LOG ====================
-
-model Activity {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  action        String
-  description   String    @db.Text
-  metadata      Json?
-
-  createdAt     DateTime  @default(now())
-
-  @@index([userId])
-  @@index([createdAt])
-}
-
-// ==================== NEXT AUTH ====================
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-  refresh_token_expires_in Int?  
-
-  @@unique([provider, providerAccountId])
-  @@index([userId])
 }

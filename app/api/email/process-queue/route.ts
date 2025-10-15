@@ -243,7 +243,31 @@ async function processFollowUps() {
 
   for (const job of jobsForFollowUp) {
     try {
-      const daysBetween = job.batch?.daysBetweenFollowUps || 3;
+      // Determine follow-up interval based on priority:
+      // 1. Custom job follow-up interval (if hasCustomFollowUp)
+      // 2. Batch follow-up interval (if part of batch)
+      // 3. Workspace default interval (if workspace job)
+      // 4. User default interval (fallback)
+      let daysBetween = 3; // fallback default
+      
+      if (job.hasCustomFollowUp && job.customMaxFollowUps) {
+        // Use user's default follow-up interval for custom follow-ups
+        daysBetween = job.user.defaultFollowUpInterval || 1;
+      } else if (job.batch?.daysBetweenFollowUps) {
+        // Use batch setting
+        daysBetween = job.batch.daysBetweenFollowUps;
+      } else if (job.workspaceId) {
+        // For workspace jobs, get workspace default
+        const workspace = await prisma.workspace.findUnique({
+          where: { id: job.workspaceId },
+          select: { defaultFollowUpInterval: true }
+        });
+        daysBetween = workspace?.defaultFollowUpInterval || 1;
+      } else {
+        // Use user's default
+        daysBetween = job.user.defaultFollowUpInterval || 1;
+      }
+      
       const lastSent = job.lastFollowUpAt || job.sentAt;
 
       if (!lastSent) continue;
