@@ -98,7 +98,16 @@ export async function DELETE(
       );
     }
 
-    // Check if user is admin
+    // Check if user is admin or owner
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: params.workspaceId },
+      select: { ownerId: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     const adminMembership = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
@@ -108,9 +117,12 @@ export async function DELETE(
       },
     });
 
-    if (!adminMembership || adminMembership.role !== "ADMIN") {
+    const isOwner = workspace.ownerId === user.id;
+    const isAdmin = adminMembership?.role === "ADMIN";
+
+    if (!isOwner && !isAdmin) {
       return NextResponse.json(
-        { error: "Only admins can remove members" },
+        { error: "Only admins and owners can remove members" },
         { status: 403 }
       );
     }
@@ -130,6 +142,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: "Cannot remove workspace owner" },
         { status: 400 }
+      );
+    }
+
+    // Only owners can remove admins
+    if (memberToRemove.role === "ADMIN" && !isOwner) {
+      return NextResponse.json(
+        { error: "Only workspace owners can remove admins" },
+        { status: 403 }
       );
     }
 

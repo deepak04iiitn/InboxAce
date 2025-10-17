@@ -21,7 +21,16 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check if user is a member and has admin role
+    // Check if user is a member and has admin role or is owner
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: params.workspaceId },
+      select: { ownerId: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     const membership = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
@@ -31,14 +40,17 @@ export async function GET(
       },
     });
 
-    if (!membership || membership.role !== "ADMIN") {
+    const isOwner = workspace.ownerId === user.id;
+    const isAdmin = membership?.role === "ADMIN";
+
+    if (!isOwner && !isAdmin) {
       return NextResponse.json(
-        { error: "You must be an admin to view workspace settings" },
+        { error: "You must be an admin or owner to view workspace settings" },
         { status: 403 }
       );
     }
 
-    const workspace = await prisma.workspace.findUnique({
+    const workspaceData = await prisma.workspace.findUnique({
       where: { id: params.workspaceId },
       select: {
         id: true,
@@ -54,13 +66,13 @@ export async function GET(
       },
     });
 
-    if (!workspace) {
+    if (!workspaceData) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     return NextResponse.json({
       success: true,
-      settings: workspace,
+      settings: workspaceData,
     });
   } catch (error: any) {
     console.error("Error fetching workspace settings:", error);
@@ -90,7 +102,16 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check if user is a member and has admin role
+    // Check if user is a member and has admin role or is owner
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: params.workspaceId },
+      select: { ownerId: true }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     const membership = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
@@ -100,9 +121,12 @@ export async function PUT(
       },
     });
 
-    if (!membership || membership.role !== "ADMIN") {
+    const isOwner = workspace.ownerId === user.id;
+    const isAdmin = membership?.role === "ADMIN";
+
+    if (!isOwner && !isAdmin) {
       return NextResponse.json(
-        { error: "You must be an admin to update workspace settings" },
+        { error: "You must be an admin or owner to update workspace settings" },
         { status: 403 }
       );
     }

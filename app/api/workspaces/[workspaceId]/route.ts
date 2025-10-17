@@ -78,9 +78,14 @@ export async function GET(
       );
     }
 
-    // Check if user is a member
-    const isMember = workspace.members.some((m) => m.userId === user.id);
-    if (!isMember) {
+    // Determine if user is owner
+    const isOwner = workspace.ownerId === user.id;
+
+    // Check if user is a member (either as owner or regular member)
+    const userMembership = workspace.members.find((m) => m.userId === user.id);
+    
+    // If user is owner, they should have access even if not in members list
+    if (!isOwner && !userMembership) {
       return NextResponse.json(
         { error: "You are not a member of this workspace" },
         { status: 403 }
@@ -95,6 +100,8 @@ export async function GET(
           id: user.id,
           name: user.name,
           email: user.email,
+          role: isOwner ? "OWNER" : (userMembership?.role === "ADMIN" ? "OWNER" : "CONTRIBUTOR"),
+          isOwner: isOwner,
         },
       },
     });

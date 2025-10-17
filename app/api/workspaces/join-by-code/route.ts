@@ -64,6 +64,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if user is blocked from this workspace
+    const isBlocked = await prisma.workspaceBlockedUser.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: workspace.id,
+          userId: user.id,
+        },
+      },
+    });
+
+    if (isBlocked) {
+      return NextResponse.json(
+        { error: "You are blocked from joining this workspace" },
+        { status: 403 }
+      );
+    }
+
     // Add user as member
     await prisma.workspaceMember.create({
       data: {

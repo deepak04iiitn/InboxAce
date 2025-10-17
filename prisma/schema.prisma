@@ -49,6 +49,8 @@ model User {
   badges                       UserBadge[]
   ownedWorkspaces              Workspace[]       @relation("WorkspaceOwner")
   workspaceMemberships         WorkspaceMember[]
+  blockedFromWorkspaces        WorkspaceBlockedUser[]
+  blockedUsers                 WorkspaceBlockedUser[] @relation("BlockedByUser")
 
   @@index([email])
   @@index([pricingTier])
@@ -317,21 +319,23 @@ model Analytics {
 }
 
 model Workspace {
-  id                 String            @id @default(uuid())
-  name               String
-  password           String
-  ownerId            String
-  description        String?
-  totalEmailsSent    Int               @default(0)
-  totalReplies       Int               @default(0)
-  totalOpportunities Int               @default(0)
-  isActive           Boolean           @default(true)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  inviteCode         String            @unique @default("WS-TEMP")
-  jobs               Job[]
-  owner              User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members            WorkspaceMember[]
+  id                     String            @id @default(uuid())
+  name                   String
+  password               String
+  ownerId                String
+  description            String?
+  defaultFollowUpInterval Int?              @default(3)
+  totalEmailsSent        Int               @default(0)
+  totalReplies           Int               @default(0)
+  totalOpportunities     Int               @default(0)
+  isActive               Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  inviteCode             String            @unique @default("WS-TEMP")
+  jobs                   Job[]
+  owner                  User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members                WorkspaceMember[]
+  blockedUsers           WorkspaceBlockedUser[]
 
   @@index([ownerId])
   @@index([inviteCode])
@@ -352,6 +356,23 @@ model WorkspaceMember {
   @@unique([workspaceId, userId])
   @@index([workspaceId])
   @@index([userId])
+}
+
+model WorkspaceBlockedUser {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  blockedBy   String
+  reason      String?
+  blockedAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  blockedByUser User    @relation("BlockedByUser", fields: [blockedBy], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([blockedBy])
 }
 
 model Badge {
