@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
 
     // If user has custom default template content, use that instead of original
     let defaultTemplate = user.defaultTemplate;
+    console.log("Default template from DB:", defaultTemplate);
+    
     if (defaultTemplate && (user.customDefaultSubject || user.customDefaultBody)) {
       defaultTemplate = {
         ...defaultTemplate,

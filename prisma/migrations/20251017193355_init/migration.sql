@@ -5,7 +5,7 @@ CREATE TYPE "UserRole" AS ENUM ('NORMAL', 'PREMIUM', 'ADMIN');
 CREATE TYPE "PricingTier" AS ENUM ('FREE', 'PLUS', 'PRO');
 
 -- CreateEnum
-CREATE TYPE "JobStatus" AS ENUM ('NOT_SENT', 'SCHEDULED', 'SENT', 'REPLIED', 'FOLLOW_UP_SENT');
+CREATE TYPE "JobStatus" AS ENUM ('NOT_SENT', 'SCHEDULED', 'SENT', 'REPLIED', 'FOLLOW_UP_SENT', 'DRAFT');
 
 -- CreateEnum
 CREATE TYPE "EmailStatus" AS ENUM ('PENDING', 'SCHEDULED', 'SENT', 'FAILED', 'OPENED', 'REPLIED');
@@ -20,14 +20,17 @@ CREATE TYPE "EmailType" AS ENUM ('APPLICATION', 'REFERRAL_REQUEST', 'FOLLOW_UP_I
 CREATE TYPE "WorkspaceRole" AS ENUM ('ADMIN', 'CONTRIBUTOR');
 
 -- CreateEnum
-CREATE TYPE "TemplateCategory" AS ENUM ('GENERAL', 'TECH', 'FINANCE', 'MARKETING', 'SALES', 'DESIGN', 'CONSULTING', 'OTHER');
+CREATE TYPE "TemplateCategory" AS ENUM ('GENERAL', 'TECH', 'FINANCE', 'MARKETING', 'SALES', 'DESIGN', 'CONSULTING', 'OTHER', 'HEALTHCARE', 'EDUCATION', 'LEGAL', 'REAL_ESTATE', 'NON_PROFIT', 'ENTERTAINMENT', 'RETAIL', 'MANUFACTURING', 'AGRICULTURE', 'TRANSPORTATION', 'ENERGY', 'TELECOMMUNICATIONS', 'GOVERNMENT');
+
+-- CreateEnum
+CREATE TYPE "TemplateType" AS ENUM ('APPLICATION', 'REFERRAL_REQUEST', 'FOLLOW_UP', 'THANK_YOU', 'REJECTION_FOLLOW_UP', 'INTERVIEW_FOLLOW_UP', 'NETWORKING', 'COLD_OUTREACH', 'PARTNERSHIP', 'COLLABORATION', 'CUSTOM');
 
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "password" TEXT NOT NULL,
+    "password" TEXT DEFAULT '',
     "role" "UserRole" NOT NULL DEFAULT 'NORMAL',
     "pricingTier" "PricingTier" NOT NULL DEFAULT 'FREE',
     "trialStartDate" TIMESTAMP(3),
@@ -44,6 +47,13 @@ CREATE TABLE "User" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "lastLoginAt" TIMESTAMP(3),
     "portfolioLinks" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "emailVerified" TIMESTAMP(3),
+    "defaultTemplateId" TEXT,
+    "customDefaultBody" TEXT,
+    "customDefaultSubject" TEXT,
+    "customDefaultFollowUpBody" TEXT,
+    "customDefaultFollowUpSubject" TEXT,
+    "defaultFollowUpTemplateId" TEXT,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -127,6 +137,10 @@ CREATE TABLE "Job" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "templateId" TEXT,
+    "autoSendAt" TIMESTAMP(3),
+    "customFollowUpInterval" INTEGER,
+    "isDirty" BOOLEAN NOT NULL DEFAULT false,
+    "lastSavedAt" TIMESTAMP(3),
 
     CONSTRAINT "Job_pkey" PRIMARY KEY ("id")
 );
@@ -188,6 +202,15 @@ CREATE TABLE "EmailTemplate" (
     "variables" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdByName" TEXT,
+    "downloads" INTEGER NOT NULL DEFAULT 0,
+    "isCommunity" BOOLEAN NOT NULL DEFAULT false,
+    "likes" INTEGER NOT NULL DEFAULT 0,
+    "description" TEXT,
+    "difficultyLevel" TEXT,
+    "estimatedLength" INTEGER,
+    "targetAudience" TEXT,
+    "templateType" "TemplateType" NOT NULL DEFAULT 'APPLICATION',
 
     CONSTRAINT "EmailTemplate_pkey" PRIMARY KEY ("id")
 );
@@ -202,6 +225,16 @@ CREATE TABLE "TemplateRating" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "TemplateRating_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TemplateLike" (
+    "id" TEXT NOT NULL,
+    "templateId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TemplateLike_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -260,6 +293,7 @@ CREATE TABLE "Workspace" (
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "inviteCode" TEXT NOT NULL DEFAULT 'WS-TEMP',
 
     CONSTRAINT "Workspace_pkey" PRIMARY KEY ("id")
 );
@@ -273,6 +307,7 @@ CREATE TABLE "WorkspaceMember" (
     "leadsAdded" INTEGER NOT NULL DEFAULT 0,
     "emailsSent" INTEGER NOT NULL DEFAULT 0,
     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "repliesReceived" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "WorkspaceMember_pkey" PRIMARY KEY ("id")
 );
@@ -311,6 +346,25 @@ CREATE TABLE "Activity" (
     CONSTRAINT "Activity_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Account" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "provider" TEXT NOT NULL,
+    "providerAccountId" TEXT NOT NULL,
+    "refresh_token" TEXT,
+    "access_token" TEXT,
+    "expires_at" INTEGER,
+    "token_type" TEXT,
+    "scope" TEXT,
+    "id_token" TEXT,
+    "session_state" TEXT,
+    "refresh_token_expires_in" INTEGER,
+
+    CONSTRAINT "Account_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -321,10 +375,19 @@ CREATE INDEX "User_email_idx" ON "User"("email");
 CREATE INDEX "User_pricingTier_idx" ON "User"("pricingTier");
 
 -- CreateIndex
+CREATE INDEX "User_defaultTemplateId_idx" ON "User"("defaultTemplateId");
+
+-- CreateIndex
 CREATE INDEX "EmailAccount_userId_idx" ON "EmailAccount"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "EmailAccount_userId_email_key" ON "EmailAccount"("userId", "email");
+
+-- CreateIndex
+CREATE INDEX "JobBatch_userId_idx" ON "JobBatch"("userId");
+
+-- CreateIndex
+CREATE INDEX "JobBatch_templateId_idx" ON "JobBatch"("templateId");
 
 -- CreateIndex
 CREATE INDEX "Job_userId_idx" ON "Job"("userId");
@@ -342,7 +405,13 @@ CREATE INDEX "Job_status_idx" ON "Job"("status");
 CREATE INDEX "Job_customScheduledFor_idx" ON "Job"("customScheduledFor");
 
 -- CreateIndex
+CREATE INDEX "Job_autoSendAt_idx" ON "Job"("autoSendAt");
+
+-- CreateIndex
 CREATE INDEX "Job_emailType_idx" ON "Job"("emailType");
+
+-- CreateIndex
+CREATE INDEX "Job_templateId_idx" ON "Job"("templateId");
 
 -- CreateIndex
 CREATE INDEX "JobComment_jobId_idx" ON "JobComment"("jobId");
@@ -360,10 +429,34 @@ CREATE INDEX "Email_status_idx" ON "Email"("status");
 CREATE INDEX "Email_sentAt_idx" ON "Email"("sentAt");
 
 -- CreateIndex
+CREATE INDEX "EmailTemplate_userId_idx" ON "EmailTemplate"("userId");
+
+-- CreateIndex
+CREATE INDEX "EmailTemplate_category_idx" ON "EmailTemplate"("category");
+
+-- CreateIndex
+CREATE INDEX "EmailTemplate_templateType_idx" ON "EmailTemplate"("templateType");
+
+-- CreateIndex
+CREATE INDEX "EmailTemplate_isPublic_idx" ON "EmailTemplate"("isPublic");
+
+-- CreateIndex
+CREATE INDEX "EmailTemplate_isCommunity_idx" ON "EmailTemplate"("isCommunity");
+
+-- CreateIndex
 CREATE INDEX "TemplateRating_templateId_idx" ON "TemplateRating"("templateId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TemplateRating_templateId_userId_key" ON "TemplateRating"("templateId", "userId");
+
+-- CreateIndex
+CREATE INDEX "TemplateLike_templateId_idx" ON "TemplateLike"("templateId");
+
+-- CreateIndex
+CREATE INDEX "TemplateLike_userId_idx" ON "TemplateLike"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TemplateLike_templateId_userId_key" ON "TemplateLike"("templateId", "userId");
 
 -- CreateIndex
 CREATE INDEX "Campaign_userId_idx" ON "Campaign"("userId");
@@ -379,6 +472,15 @@ CREATE INDEX "Analytics_date_idx" ON "Analytics"("date");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Analytics_userId_date_key" ON "Analytics"("userId", "date");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Workspace_inviteCode_key" ON "Workspace"("inviteCode");
+
+-- CreateIndex
+CREATE INDEX "Workspace_ownerId_idx" ON "Workspace"("ownerId");
+
+-- CreateIndex
+CREATE INDEX "Workspace_inviteCode_idx" ON "Workspace"("inviteCode");
 
 -- CreateIndex
 CREATE INDEX "WorkspaceMember_workspaceId_idx" ON "WorkspaceMember"("workspaceId");
@@ -404,20 +506,26 @@ CREATE INDEX "Activity_userId_idx" ON "Activity"("userId");
 -- CreateIndex
 CREATE INDEX "Activity_createdAt_idx" ON "Activity"("createdAt");
 
--- AddForeignKey
-ALTER TABLE "EmailAccount" ADD CONSTRAINT "EmailAccount_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- CreateIndex
+CREATE INDEX "Account_userId_idx" ON "Account"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Account_provider_providerAccountId_key" ON "Account"("provider", "providerAccountId");
 
 -- AddForeignKey
-ALTER TABLE "JobBatch" ADD CONSTRAINT "JobBatch_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "User" ADD CONSTRAINT "User_defaultFollowUpTemplateId_fkey" FOREIGN KEY ("defaultFollowUpTemplateId") REFERENCES "EmailTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_defaultTemplateId_fkey" FOREIGN KEY ("defaultTemplateId") REFERENCES "EmailTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EmailAccount" ADD CONSTRAINT "EmailAccount_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "JobBatch" ADD CONSTRAINT "JobBatch_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "EmailTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Job" ADD CONSTRAINT "Job_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Job" ADD CONSTRAINT "Job_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "JobBatch" ADD CONSTRAINT "JobBatch_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Job" ADD CONSTRAINT "Job_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "JobBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -426,13 +534,19 @@ ALTER TABLE "Job" ADD CONSTRAINT "Job_batchId_fkey" FOREIGN KEY ("batchId") REFE
 ALTER TABLE "Job" ADD CONSTRAINT "Job_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "EmailTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Job" ADD CONSTRAINT "Job_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Job" ADD CONSTRAINT "Job_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "JobComment" ADD CONSTRAINT "JobComment_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Email" ADD CONSTRAINT "Email_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Email" ADD CONSTRAINT "Email_emailAccountId_fkey" FOREIGN KEY ("emailAccountId") REFERENCES "EmailAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Email" ADD CONSTRAINT "Email_emailAccountId_fkey" FOREIGN KEY ("emailAccountId") REFERENCES "EmailAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Email" ADD CONSTRAINT "Email_jobId_fkey" FOREIGN KEY ("jobId") REFERENCES "Job"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "EmailTemplate" ADD CONSTRAINT "EmailTemplate_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -441,10 +555,13 @@ ALTER TABLE "EmailTemplate" ADD CONSTRAINT "EmailTemplate_userId_fkey" FOREIGN K
 ALTER TABLE "TemplateRating" ADD CONSTRAINT "TemplateRating_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "EmailTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Campaign" ADD CONSTRAINT "Campaign_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TemplateLike" ADD CONSTRAINT "TemplateLike_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "EmailTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Campaign" ADD CONSTRAINT "Campaign_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "EmailTemplate"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Campaign" ADD CONSTRAINT "Campaign_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Analytics" ADD CONSTRAINT "Analytics_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -453,16 +570,19 @@ ALTER TABLE "Analytics" ADD CONSTRAINT "Analytics_userId_fkey" FOREIGN KEY ("use
 ALTER TABLE "Workspace" ADD CONSTRAINT "Workspace_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "WorkspaceMember" ADD CONSTRAINT "WorkspaceMember_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "WorkspaceMember" ADD CONSTRAINT "WorkspaceMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WorkspaceMember" ADD CONSTRAINT "WorkspaceMember_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_badgeId_fkey" FOREIGN KEY ("badgeId") REFERENCES "Badge"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Activity" ADD CONSTRAINT "Activity_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

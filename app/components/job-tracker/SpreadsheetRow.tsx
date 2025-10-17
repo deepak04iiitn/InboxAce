@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, memo, useEffect } from "react";
-import { Send, Copy, Trash2, MoreHorizontal, Clock, Check, Mail, Edit2, AlertCircle, Repeat } from "lucide-react";
+import { Send, Copy, Trash2, MoreHorizontal, Clock, Check, Mail, Edit2, AlertCircle, Repeat, CheckCircle, Save } from "lucide-react";
 
 interface Job {
   id: string;
@@ -15,8 +15,9 @@ interface Job {
   customBody: string;
   status: string;
   customSendNow: boolean;
-  customScheduledFor: string;
+  customScheduledFor: string | null;
   customMaxFollowUps: number;
+  customFollowUpInterval?: number;
   followUpsSent: number;
   templateId: string;
   notes: string;
@@ -24,6 +25,8 @@ interface Job {
   customLinks: string[];
   batchId?: string;
   batchName?: string;
+  lastSavedAt?: string;
+  isDirty?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +53,9 @@ interface SpreadsheetRowProps {
   onClone: () => void;
   onDelete: () => void;
   onSendNow: () => void;
+  onSave: () => void;
+  autoSaveStatus?: 'idle' | 'saving' | 'saved' | 'error';
+  isDirty?: boolean;
 }
 
 // Inline editable cell component
@@ -217,6 +223,85 @@ const FollowUpCell = memo(({
 
 FollowUpCell.displayName = "FollowUpCell";
 
+// Follow-up Interval Cell Component
+const FollowUpIntervalCell = memo(({ 
+  followUpInterval,
+  isEditing,
+  onUpdate,
+  onStartEdit,
+  onEndEdit
+}: {
+  followUpInterval?: number;
+  isEditing: boolean;
+  onUpdate: (value: number) => void;
+  onStartEdit: () => void;
+  onEndEdit: () => void;
+}) => {
+  const safeFollowUpInterval = followUpInterval ?? 0;
+  const [localValue, setLocalValue] = useState(safeFollowUpInterval.toString());
+  
+  const handleSave = () => {
+    const numValue = parseInt(localValue) || 0;
+    const clampedValue = Math.min(Math.max(numValue, 1), 30); // 1-30 range
+    if (clampedValue !== safeFollowUpInterval) {
+      onUpdate(clampedValue);
+    }
+    onEndEdit();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === "Escape") {
+      setLocalValue(safeFollowUpInterval.toString());
+      onEndEdit();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min="1"
+          max="30"
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          className="w-16 bg-gray-900 border-2 border-purple-500 rounded px-2 py-1 text-white text-sm focus:outline-none"
+        />
+        <span className="text-xs text-gray-500">days</span>
+      </div>
+    );
+  }
+
+  const hasInterval = safeFollowUpInterval > 0;
+
+  return (
+    <div
+      onClick={onStartEdit}
+      className="cursor-pointer hover:bg-gray-700/30 rounded px-2 py-1 min-h-[28px] flex items-center gap-2"
+    >
+      <Clock 
+        size={14} 
+        className={hasInterval ? "text-green-400" : "text-gray-500"} 
+      />
+      <div className="flex items-center gap-1">
+        <span className={`text-sm font-medium ${
+          hasInterval ? "text-green-400" : "text-gray-500"
+        }`}>
+          {hasInterval ? `${safeFollowUpInterval}d` : "Set"}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+FollowUpIntervalCell.displayName = "FollowUpIntervalCell";
+
 function SpreadsheetRow({
   job,
   templates,
@@ -231,6 +316,9 @@ function SpreadsheetRow({
   onClone,
   onDelete,
   onSendNow,
+  onSave,
+  autoSaveStatus = 'idle',
+  isDirty = false,
 }: SpreadsheetRowProps) {
 
   const isEditingField = (field: string) => 
@@ -251,10 +339,25 @@ function SpreadsheetRow({
     const config = statusConfig[status] || statusConfig.DRAFT;
     const Icon = config.icon;
     
+    // Auto-save status indicator
+    const getAutoSaveIndicator = () => {
+      if (autoSaveStatus === 'saving') {
+        return <Clock size={10} className="text-yellow-400 animate-spin" />;
+      } else if (autoSaveStatus === 'saved') {
+        return <CheckCircle size={10} className="text-green-400" />;
+      } else if (autoSaveStatus === 'error') {
+        return <AlertCircle size={10} className="text-red-400" />;
+      } else if (isDirty) {
+        return <div className="w-2 h-2 bg-yellow-400 rounded-full" />;
+      }
+      return null;
+    };
+    
     return (
       <div className={`flex items-center gap-1 px-2 py-1 rounded text-xs ${config.bg} ${config.text}`}>
         <Icon size={12} />
         {status}
+        {getAutoSaveIndicator()}
       </div>
     );
   };
@@ -468,6 +571,17 @@ function SpreadsheetRow({
         />
       </td>
 
+      {/* Follow-up Interval */}
+      <td className="px-4 py-2">
+        <FollowUpIntervalCell
+          followUpInterval={job.customFollowUpInterval}
+          isEditing={isEditingField("customFollowUpInterval")}
+          onUpdate={(val) => onCellUpdate(job.id, "customFollowUpInterval", val)}
+          onStartEdit={() => onStartEdit("customFollowUpInterval")}
+          onEndEdit={onEndEdit}
+        />
+      </td>
+
       {/* Batch */}
       <td className="px-4 py-2">
         {job.batchName ? (
@@ -482,6 +596,25 @@ function SpreadsheetRow({
       {/* Actions */}
       <td className="px-4 py-2">
         <div className="flex items-center gap-2">
+          {/* Save button - only show for temp jobs or dirty jobs */}
+          {(job.id.startsWith("temp-") || isDirty) && (
+            <button
+              onClick={onSave}
+              disabled={autoSaveStatus === 'saving'}
+              className={`cursor-pointer p-1 rounded transition ${
+                autoSaveStatus === 'saving' 
+                  ? 'bg-yellow-700/30 text-yellow-400 cursor-not-allowed' 
+                  : 'hover:bg-yellow-700/30 text-yellow-400'
+              }`}
+              title={autoSaveStatus === 'saving' ? 'Saving...' : 'Save Job'}
+            >
+              {autoSaveStatus === 'saving' ? (
+                <Clock size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
+            </button>
+          )}
           <button
             onClick={onSendNow}
             className="cursor-pointer p-1 hover:bg-green-700/30 text-green-400 rounded transition"
@@ -530,10 +663,12 @@ export default memo(SpreadsheetRow, (prev, next) => {
     prev.job.customMaxFollowUps === next.job.customMaxFollowUps &&
     prev.job.followUpsSent === next.job.followUpsSent &&
     prev.job.batchName === next.job.batchName &&
+    prev.job.isDirty === next.job.isDirty &&
     prev.isSelected === next.isSelected &&
     prev.editingCell?.jobId === next.editingCell?.jobId &&
     prev.editingCell?.field === next.editingCell?.field &&
     prev.defaultTemplate?.id === next.defaultTemplate?.id &&
-    prev.defaultTemplate?.name === next.defaultTemplate?.name
+    prev.defaultTemplate?.name === next.defaultTemplate?.name &&
+    prev.autoSaveStatus === next.autoSaveStatus
   );
 });

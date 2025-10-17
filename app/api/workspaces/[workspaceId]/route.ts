@@ -5,13 +5,16 @@ import { prisma } from "@/lib/db";
 // GET - Get workspace details
 export async function GET(
   req: NextRequest,
-  { params }: { params: { workspaceId: string } }
+  { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Await params before accessing properties
+    const { workspaceId } = await params;
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -22,7 +25,7 @@ export async function GET(
     }
 
     const workspace = await prisma.workspace.findUnique({
-      where: { id: params.workspaceId },
+      where: { id: workspaceId },
       include: {
         owner: {
           select: {
@@ -107,13 +110,16 @@ export async function GET(
 // DELETE - Delete workspace (owner only)
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { workspaceId: string } }
+  { params }: { params: Promise<{ workspaceId: string }> }
 ) {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Await params before accessing properties
+    const { workspaceId } = await params;
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -124,7 +130,7 @@ export async function DELETE(
     }
 
     const workspace = await prisma.workspace.findUnique({
-      where: { id: params.workspaceId },
+      where: { id: workspaceId },
     });
 
     if (!workspace) {
@@ -144,7 +150,7 @@ export async function DELETE(
 
     // Delete workspace (cascade will handle members and jobs)
     await prisma.workspace.delete({
-      where: { id: params.workspaceId },
+      where: { id: workspaceId },
     });
 
     // Log activity

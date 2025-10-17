@@ -25,6 +25,12 @@ export async function GET(req: NextRequest) {
               lte: now,
             },
           },
+          {
+            // Auto-send after 30 minutes if no action taken
+            autoSendAt: {
+              lte: now,
+            },
+          },
         ],
       },
       include: {
@@ -36,6 +42,21 @@ export async function GET(req: NextRequest) {
           },
         },
         template: true,
+        workspace: {
+          include: {
+            members: {
+              include: {
+                user: {
+                  include: {
+                    emailAccounts: {
+                      where: { isActive: true, isPrimary: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       take: 50, // Process 50 at a time
     });
@@ -46,7 +67,18 @@ export async function GET(req: NextRequest) {
 
     for (const job of jobsToSend) {
       try {
-        const emailAccount = job.user.emailAccounts[0];
+        let emailAccount = job.user.emailAccounts[0];
+        
+        // For workspace jobs, try to find an available email account from any member
+        if (!emailAccount && job.workspace) {
+          for (const member of job.workspace.members) {
+            if (member.user.emailAccounts.length > 0) {
+              emailAccount = member.user.emailAccounts[0];
+              break;
+            }
+          }
+        }
+        
         if (!emailAccount) {
           console.log(`No email account for job ${job.id}`);
           continue;
@@ -116,8 +148,9 @@ export async function GET(req: NextRequest) {
         }
 
         // Send email
+        const senderName = job.user.name;
         const info = await transporter.sendMail({
-          from: `${job.user.name} <${emailAccount.email}>`,
+          from: `${senderName} <${emailAccount.email}>`,
           to: job.recipientEmail,
           subject,
           html: body,
@@ -133,12 +166,13 @@ export async function GET(req: NextRequest) {
           },
         });
 
-        // Update job status
+        // Update job status and clear auto-send timer
         await prisma.job.update({
           where: { id: job.id },
           data: {
             status: "SENT",
             sentAt: new Date(),
+            autoSendAt: null, // Clear auto-send timer
           },
         });
 
@@ -251,8 +285,8 @@ async function processFollowUps() {
       let daysBetween = 3; // fallback default
       
       if (job.hasCustomFollowUp && job.customMaxFollowUps) {
-        // Use user's default follow-up interval for custom follow-ups
-        daysBetween = job.user.defaultFollowUpInterval || 1;
+        // Use custom job follow-up interval if set, otherwise user's default
+        daysBetween = job.customFollowUpInterval || job.user.defaultFollowUpInterval || 1;
       } else if (job.batch?.daysBetweenFollowUps) {
         // Use batch setting
         daysBetween = job.batch.daysBetweenFollowUps;

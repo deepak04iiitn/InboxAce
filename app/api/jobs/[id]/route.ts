@@ -79,15 +79,26 @@ export async function PATCH(
 
     const body = await req.json();
 
+    // Reset auto-send timer if job is being updated and still not sent
+    const updateData: any = {
+      ...body,
+      updatedAt: new Date(),
+    };
+
+    // If job is still not sent and not scheduled, reset auto-send timer
+    if (body.status === "NOT_SENT" && !body.customScheduledFor) {
+      updateData.autoSendAt = new Date(Date.now() + 30 * 60 * 1000);
+    } else if (body.status !== "NOT_SENT" || body.customScheduledFor) {
+      // Clear auto-send timer if job is sent or scheduled
+      updateData.autoSendAt = null;
+    }
+
     const job = await prisma.job.update({
       where: {
         id: id,
         userId: user.id,
       },
-      data: {
-        ...body,
-        updatedAt: new Date(),
-      },
+      data: updateData,
       include: {
         template: true,
       },

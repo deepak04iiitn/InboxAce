@@ -83,10 +83,12 @@ export async function POST(req: NextRequest) {
       customSendNow,
       customScheduledFor,
       customMaxFollowUps,
+      customFollowUpInterval,
       notes,
       tags,
       workspaceId,
       templateId,
+      status,
     } = body;
 
     // Validate required fields
@@ -96,6 +98,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Set auto-send timer to 30 minutes from now if not scheduled
+    const autoSendAt = customScheduledFor ? null : new Date(Date.now() + 30 * 60 * 1000);
 
     const job = await prisma.job.create({
       data: {
@@ -114,11 +119,15 @@ export async function POST(req: NextRequest) {
         customScheduledFor: customScheduledFor || null,
         hasCustomFollowUp: customMaxFollowUps !== undefined,
         customMaxFollowUps: customMaxFollowUps || null,
+        customFollowUpInterval: customFollowUpInterval || null,
         notes: notes || null,
         tags: tags || [],
         workspaceId: workspaceId || null,
         templateId: templateId || null,
-        status: "NOT_SENT",
+        status: status || "NOT_SENT",
+        autoSendAt: autoSendAt,
+        lastSavedAt: new Date(),
+        isDirty: false,
       },
       include: {
         template: true,

@@ -108,48 +108,53 @@ model JobBatch {
 }
 
 model Job {
-  id                 String         @id @default(uuid())
-  userId             String
-  workspaceId        String?
-  batchId            String?
-  recipientName      String
-  recipientGender    Gender
-  position           String
-  company            String
-  recipientEmail     String
-  emailType          EmailType
-  customSubject      String?
-  customBody         String?
-  customLinks        String[]       @default([])
-  hasCustomSchedule  Boolean        @default(false)
-  customSendNow      Boolean?
-  customScheduledFor DateTime?
-  hasCustomFollowUp  Boolean        @default(false)
-  customMaxFollowUps Int?
-  followUpsSent      Int            @default(0)
-  status             JobStatus      @default(NOT_SENT)
-  sentAt             DateTime?
-  gotReply           Boolean        @default(false)
-  repliedAt          DateTime?
-  notes              String?
-  tags               String[]       @default([])
-  lastFollowUpAt     DateTime?
-  nextFollowUpAt     DateTime?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  templateId         String?
-  emails             Email[]
-  batch              JobBatch?      @relation(fields: [batchId], references: [id])
-  template           EmailTemplate? @relation(fields: [templateId], references: [id])
-  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace          Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  comments           JobComment[]
+  id                     String         @id @default(uuid())
+  userId                 String
+  workspaceId            String?
+  batchId                String?
+  recipientName          String
+  recipientGender        Gender
+  position               String
+  company                String
+  recipientEmail         String
+  emailType              EmailType
+  customSubject          String?
+  customBody             String?
+  customLinks            String[]       @default([])
+  hasCustomSchedule      Boolean        @default(false)
+  customSendNow          Boolean?
+  customScheduledFor     DateTime?
+  hasCustomFollowUp      Boolean        @default(false)
+  customMaxFollowUps     Int?
+  followUpsSent          Int            @default(0)
+  status                 JobStatus      @default(NOT_SENT)
+  sentAt                 DateTime?
+  gotReply               Boolean        @default(false)
+  repliedAt              DateTime?
+  notes                  String?
+  tags                   String[]       @default([])
+  lastFollowUpAt         DateTime?
+  nextFollowUpAt         DateTime?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  templateId             String?
+  autoSendAt             DateTime?
+  customFollowUpInterval Int?
+  isDirty                Boolean        @default(false)
+  lastSavedAt            DateTime?
+  emails                 Email[]
+  batch                  JobBatch?      @relation(fields: [batchId], references: [id])
+  template               EmailTemplate? @relation(fields: [templateId], references: [id])
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace              Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  comments               JobComment[]
 
   @@index([userId])
   @@index([workspaceId])
   @@index([batchId])
   @@index([status])
   @@index([customScheduledFor])
+  @@index([autoSendAt])
   @@index([emailType])
   @@index([templateId])
 }
@@ -422,6 +427,7 @@ enum JobStatus {
   SENT
   REPLIED
   FOLLOW_UP_SENT
+  DRAFT
 }
 
 enum EmailStatus {

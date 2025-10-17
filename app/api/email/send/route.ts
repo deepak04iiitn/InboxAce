@@ -74,13 +74,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Get job details
+    // 6. Get job details - check both user jobs and workspace jobs
     const job = await prisma.job.findFirst({
       where: { 
         id: jobId,
-        userId: user.id 
+        OR: [
+          { userId: user.id },
+          {
+            workspaceId: { not: null },
+            workspace: {
+              members: {
+                some: { userId: user.id }
+              }
+            }
+          }
+        ]
       },
-      include: { template: true },
+      include: { 
+        template: true,
+        workspace: {
+          include: {
+            members: {
+              where: { userId: user.id }
+            }
+          }
+        }
+      },
     });
 
     if (!job) {
@@ -219,7 +238,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 14. Update job status
+      // 14. Update job status and clear auto-send timer
       await prisma.job.update({
         where: { id: jobId },
         data: {
@@ -227,6 +246,7 @@ export async function POST(req: NextRequest) {
           sentAt: !isFollowUp ? new Date() : job.sentAt,
           followUpsSent: isFollowUp ? job.followUpsSent + 1 : job.followUpsSent,
           lastFollowUpAt: isFollowUp ? new Date() : job.lastFollowUpAt,
+          autoSendAt: null, // Clear auto-send timer
         },
       });
 

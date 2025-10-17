@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, FileText, Search, Check, Eye, Edit3 } from "lucide-react";
+import { X, FileText, Search, Check, Eye, Edit3, Filter, Mail, RefreshCw } from "lucide-react";
+import { TEMPLATE_CATEGORIES, TEMPLATE_TYPES } from "@/lib/template-variables";
 
 interface DefaultTemplateModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface Template {
   subject: string;
   body: string;
   category: string;
+  templateType?: string;
   rating: number;
   usageCount: number;
   likes: number;
@@ -29,6 +31,9 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [editedSubject, setEditedSubject] = useState("");
   const [editedBody, setEditedBody] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedTemplateType, setSelectedTemplateType] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<'default' | 'followUp'>('default');
 
   useEffect(() => {
     if (isOpen) {
@@ -52,11 +57,24 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
     }
   };
 
+  // Use predefined categories and template types from constants
+  const categories = TEMPLATE_CATEGORIES;
+  const templateTypes = TEMPLATE_TYPES;
+
   const filteredTemplates = templates.filter(
-    (template) =>
-      template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (template) => {
+      const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        template.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        template.category.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesCategory = selectedCategory === "all" || template.category === selectedCategory;
+      const matchesTemplateType = selectedTemplateType === "all" || template.templateType === selectedTemplateType;
+      
+      // Show all templates - let users filter as needed
+      const matchesTab = true;
+      
+      return matchesSearch && matchesCategory && matchesTemplateType && matchesTab;
+    }
   );
 
   const handleSetDefault = async () => {
@@ -76,6 +94,7 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           templateId: selectedTemplateId,
+          type: activeTab,
           // If the template was edited, send the custom version
           customSubject: selectedTemplate?.subject,
           customBody: selectedTemplate?.body
@@ -156,10 +175,10 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
               <div>
                 <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                   <FileText className="w-7 h-7 text-purple-400" />
-                  Select Your Default Template
+                  Set Default Templates
                 </h2>
                 <p className="text-gray-400 text-sm mt-2">
-                  This template will be automatically applied to all your job applications. You can customize it for each job.
+                  Choose your default templates for applications and follow-ups. You can customize them for each job.
                 </p>
               </div>
               <button
@@ -170,16 +189,112 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
               </button>
             </div>
 
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-              <input
-                type="text"
-                placeholder="Search templates by name, subject, or category..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-gray-800/50 border border-gray-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+            {/* Tabs */}
+            <div className="flex space-x-1 bg-gray-800/50 rounded-lg p-1 mb-4">
+              <button
+                onClick={() => {
+                  setActiveTab('default');
+                  setSelectedTemplateId('');
+                  setSelectedCategory('all');
+                  setSelectedTemplateType('all');
+                  setSearchQuery('');
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md transition-all ${
+                  activeTab === 'default'
+                    ? 'bg-purple-600 text-white shadow-lg'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                <span className="font-medium">Application Templates</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('followUp');
+                  setSelectedTemplateId('');
+                  setSelectedCategory('all');
+                  setSelectedTemplateType('all');
+                  setSearchQuery('');
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md transition-all ${
+                  activeTab === 'followUp'
+                    ? 'bg-purple-600 text-white shadow-lg'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                }`}
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="font-medium">Follow-up Templates</span>
+              </button>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="space-y-4">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search templates by name, subject, or category..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-gray-800/50 border border-gray-700 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              
+              {/* Filter Dropdowns */}
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-400 mb-2">Category</label>
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="w-full bg-gray-800/50 border border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none cursor-pointer"
+                    >
+                      <option value="all">All Categories</option>
+                      {categories.map((category) => (
+                        <option key={category.value} value={category.value}>
+                          {category.icon} {category.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-400 mb-2">Template Type</label>
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <select
+                      value={selectedTemplateType}
+                      onChange={(e) => setSelectedTemplateType(e.target.value)}
+                      className="w-full bg-gray-800/50 border border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none cursor-pointer"
+                    >
+                      <option value="all">All Types</option>
+                      {templateTypes.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.icon} {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                {/* Reset Filters Button */}
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      setSelectedCategory("all");
+                      setSelectedTemplateType("all");
+                      setSearchQuery("");
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2.5 rounded-lg transition text-sm"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -293,9 +408,13 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
           {/* Footer */}
           <div className="bg-gray-900 border-t border-gray-800 p-6 flex items-center justify-between">
             <div className="text-sm text-gray-400">
-              {selectedTemplateId && (
+              {selectedTemplateId ? (
                 <span className="text-purple-400 font-medium">
                   Template selected! You can customize it for each job.
+                </span>
+              ) : (
+                <span>
+                  Showing {filteredTemplates.length} of {templates.length} templates
                 </span>
               )}
             </div>
@@ -311,7 +430,7 @@ export default function DefaultTemplateModal({ isOpen, onClose, onTemplateSelect
                 disabled={!selectedTemplateId || submitting}
                 className="cursor-pointer bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {submitting ? "Setting..." : "Set as Default"}
+                {submitting ? "Setting..." : `Set as Default ${activeTab === 'followUp' ? 'Follow-up' : 'Application'} Template`}
               </button>
             </div>
           </div>

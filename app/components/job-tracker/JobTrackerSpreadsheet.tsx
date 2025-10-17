@@ -11,6 +11,10 @@ import {
   Trash2,
   FileText,
   Crown,
+  Save,
+  AlertCircle,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
@@ -37,8 +41,9 @@ interface Job {
   customBody: string;
   status: string;
   customSendNow: boolean;
-  customScheduledFor: string;
+  customScheduledFor: string | null;
   customMaxFollowUps: number;
+  customFollowUpInterval?: number;
   followUpsSent: number;
   templateId: string;
   template?: {
@@ -51,6 +56,8 @@ interface Job {
   customLinks: string[];
   batchId?: string;
   batchName?: string;
+  lastSavedAt?: string;
+  isDirty?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,9 +87,16 @@ export default function JobTrackerSpreadsheet() {
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showDefaultTemplateModal, setShowDefaultTemplateModal] = useState(false);
+  const [defaultTemplateModalType, setDefaultTemplateModalType] = useState<'default' | 'followUp'>('default');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [hasDefaultTemplate, setHasDefaultTemplate] = useState(false);
   const [checkingDefaultTemplate, setCheckingDefaultTemplate] = useState(true);
+  const [userSettings, setUserSettings] = useState<{
+    defaultFollowUpInterval?: number;
+    defaultFollowUpTemplateId?: string;
+  } | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<{ [jobId: string]: 'idle' | 'saving' | 'saved' | 'error' }>({});
+  const [pendingSaves, setPendingSaves] = useState<Set<string>>(new Set());
   
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +104,7 @@ export default function JobTrackerSpreadsheet() {
     checkDefaultTemplate();
     fetchTemplates();
     checkPremiumStatus();
+    fetchUserSettings();
   }, []);
 
   useEffect(() => {
@@ -110,16 +125,35 @@ export default function JobTrackerSpreadsheet() {
     }
   };
 
+  const fetchUserSettings = async () => {
+    try {
+      const response = await fetch('/api/user/settings');
+      const data = await response.json();
+      if (data.success) {
+        setUserSettings({
+          defaultFollowUpInterval: data.settings.defaultFollowUpInterval,
+          defaultFollowUpTemplateId: data.settings.defaultFollowUpTemplateId,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch user settings:', error);
+    }
+  };
+
   const checkDefaultTemplate = async () => {
     try {
       const response = await fetch('/api/user/default-template');
       const data = await response.json();
       
+      console.log('Default template API response:', data);
+      
       if (data.success) {
         setHasDefaultTemplate(data.hasDefaultTemplate);
         
-        if (data.template) {
-          setDefaultTemplate(data.template);
+        if (data.defaultTemplate) {
+          setDefaultTemplate(data.defaultTemplate);
+        } else {
+          console.log('No default template found in API response');
         }
         
         if (!data.hasDefaultTemplate && hasEmailAccount) {
@@ -183,6 +217,8 @@ export default function JobTrackerSpreadsheet() {
   };
 
   const handleAddRow = () => {
+    console.log("Add row clicked", { hasEmailAccount, hasDefaultTemplate, defaultTemplate });
+    
     if (!hasEmailAccount) {
       toast.error("Please connect your email account first");
       return;
@@ -194,8 +230,15 @@ export default function JobTrackerSpreadsheet() {
       return;
     }
 
-    if (!defaultTemplate) {
-      toast.error("Default template not loaded. Please try again.");
+    // If we have a default template ID but no template object, try to use the first available template
+    let templateToUse = defaultTemplate;
+    if (!templateToUse && templates.length > 0) {
+      templateToUse = templates[0];
+      console.log("Using first available template as fallback:", templateToUse);
+    }
+
+    if (!templateToUse) {
+      toast.error("No template available. Please create or select a template first.");
       return;
     }
 
@@ -207,26 +250,100 @@ export default function JobTrackerSpreadsheet() {
       position: "",
       company: "",
       emailType: "APPLICATION",
-      customSubject: defaultTemplate.subject || "",
-      customBody: defaultTemplate.body || "",
+      customSubject: templateToUse.subject || "",
+      customBody: templateToUse.body || "",
       status: "DRAFT",
       customSendNow: true,
       customScheduledFor: "",
       customMaxFollowUps: 0,
+      customFollowUpInterval: userSettings?.defaultFollowUpInterval || 3,
       followUpsSent: 0,
-      templateId: defaultTemplate.id,
+      templateId: templateToUse.id,
       notes: "",
       tags: [],
       customLinks: [],
+      isDirty: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     
-    setJobs([newJob as Job, ...jobs]);
+    // Check if a job with the same temp ID already exists
+    const existingJob = jobs.find(j => j.id === newJob.id);
+    if (!existingJob) {
+      setJobs([newJob as Job, ...jobs]);
+    }
+    setAutoSaveStatus(prev => ({ ...prev, [newJob.id!]: 'idle' }));
     setTimeout(() => {
       setEditingCell({ jobId: newJob.id!, field: "recipientName" });
     }, 100);
   };
+
+  // Manual save function
+  const saveJob = async (job: Job) => {
+    try {
+      console.log("saveJob called with:", job);
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'saving' }));
+      
+      // For temp jobs, create them first if they have ALL required fields
+      if (job.id.startsWith("temp-")) {
+        if (job.recipientEmail?.trim() && job.recipientName?.trim() && job.position?.trim() && job.company?.trim()) {
+          console.log("Temp job has all required fields, creating...");
+          // Create the job first (this will replace the temp job)
+          await createJob(job);
+          return; // createJob will handle the status update
+        } else {
+          console.log("Temp job missing required fields");
+          setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+          toast.error("Please fill in all required fields before saving");
+          return;
+        }
+      }
+      
+      // For existing jobs, update them
+      const response = await fetch("/api/jobs/auto-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: job.id,
+          updates: {
+            recipientName: job.recipientName,
+            recipientEmail: job.recipientEmail,
+            position: job.position,
+            company: job.company,
+            recipientGender: job.recipientGender,
+            emailType: job.emailType,
+            customSubject: job.customSubject,
+            customBody: job.customBody,
+            customLinks: job.customLinks,
+            customSendNow: job.customSendNow,
+            customScheduledFor: job.customScheduledFor,
+            customMaxFollowUps: job.customMaxFollowUps,
+            customFollowUpInterval: job.customFollowUpInterval,
+            notes: job.notes,
+            tags: job.tags,
+          },
+          isDraft: true,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'saved' }));
+        setJobs(prevJobs => prevJobs.map(j => 
+          j.id === job.id ? { ...j, isDirty: false, lastSavedAt: data.savedAt } : j
+        ));
+        toast.success("Job saved", { duration: 1500 });
+      } else {
+        throw new Error(data.error || 'Save failed');
+      }
+    } catch (error) {
+      console.error("Save error:", error);
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+      toast.error("Failed to save job");
+    }
+  };
+
 
   const handleCellUpdate = useCallback((jobId: string, field: string, value: any) => {
     setJobs(prevJobs => {
@@ -234,18 +351,8 @@ export default function JobTrackerSpreadsheet() {
       if (jobIndex === -1) return prevJobs;
 
       const updatedJobs = [...prevJobs];
-      updatedJobs[jobIndex] = { ...updatedJobs[jobIndex], [field]: value };
-      
-      setTimeout(async () => {
-        if (jobId.startsWith("temp-")) {
-          const job = updatedJobs[jobIndex];
-          if (job.recipientEmail && job.recipientName) {
-            await createJob(job);
-          }
-        } else {
-          await updateJob(jobId, { [field]: value });
-        }
-      }, 800);
+      const updatedJob = { ...updatedJobs[jobIndex], [field]: value, isDirty: true };
+      updatedJobs[jobIndex] = updatedJob;
 
       return updatedJobs;
     });
@@ -253,20 +360,78 @@ export default function JobTrackerSpreadsheet() {
 
   const createJob = async (job: Job) => {
     try {
+      console.log("createJob called with:", {
+        id: job.id,
+        recipientName: job.recipientName,
+        recipientEmail: job.recipientEmail,
+        position: job.position,
+        company: job.company,
+        isTemp: job.id.startsWith("temp-")
+      });
+
+      // Ensure all required fields are present and not empty
+      if (!job.recipientName?.trim() || !job.recipientEmail?.trim() || !job.position?.trim() || !job.company?.trim()) {
+        console.log("Skipping job creation - missing required fields:", {
+          recipientName: job.recipientName,
+          recipientEmail: job.recipientEmail,
+          position: job.position,
+          company: job.company
+        });
+        return;
+      }
+
+      // Check if job already exists (not a temp job)
+      if (!job.id.startsWith("temp-")) {
+        console.log("Job already exists, skipping creation:", job.id);
+        return;
+      }
+
+      console.log("Creating job with all required fields...");
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'saving' }));
+      
+      // Prepare job data with all required fields
+      const jobData = {
+        ...job,
+        recipientName: job.recipientName.trim(),
+        recipientEmail: job.recipientEmail.trim(),
+        position: job.position.trim(),
+        company: job.company.trim(),
+        recipientGender: job.recipientGender || "NOT_SPECIFIED",
+        emailType: job.emailType || "APPLICATION",
+        customSubject: job.customSubject || "",
+        customBody: job.customBody || "",
+        customLinks: job.customLinks || [],
+        customSendNow: job.customSendNow || false,
+        customScheduledFor: job.customScheduledFor || null,
+        customMaxFollowUps: job.customMaxFollowUps || 0,
+        customFollowUpInterval: job.customFollowUpInterval || 3,
+        followUpsSent: job.followUpsSent || 0,
+        templateId: job.templateId || "",
+        notes: job.notes || "",
+        tags: job.tags || [],
+        status: job.status || "DRAFT",
+      };
+      
       const response = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(job),
+        body: JSON.stringify(jobData),
       });
       const data = await response.json();
       if (data.success) {
+        // Replace the temp job with the real job (don't add, replace)
         setJobs(prevJobs => prevJobs.map((j) => 
-          j.id === job.id ? { ...j, id: data.job.id } : j
+          j.id === job.id ? { ...data.job, isDirty: false } : j
         ));
+        setAutoSaveStatus(prev => ({ ...prev, [data.job.id]: 'saved' }));
         toast.success("Job created", { duration: 1500 });
+      } else {
+        throw new Error(data.error || 'Failed to create job');
       }
     } catch (error) {
       console.error("Failed to create job:", error);
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+      toast.error("Failed to create job");
     }
   };
 
@@ -563,7 +728,10 @@ export default function JobTrackerSpreadsheet() {
                 </div>
               </div>
               <button
-                onClick={() => setShowDefaultTemplateModal(true)}
+                onClick={() => {
+                  setDefaultTemplateModalType('default');
+                  setShowDefaultTemplateModal(true);
+                }}
                 className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg transition"
               >
                 Select Template
@@ -572,25 +740,32 @@ export default function JobTrackerSpreadsheet() {
           </div>
         )}
 
-        {hasDefaultTemplate && defaultTemplate && (
-          <div className="mb-4 bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-purple-400" />
-                <div>
-                  <h4 className="text-purple-400 font-semibold">Default Template: {defaultTemplate.name}</h4>
-                  <p className="text-gray-400 text-sm">New rows will automatically use this template</p>
-                </div>
+        {/* Default Templates Settings */}
+        <div className="mb-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-purple-400" />
+              <div>
+                <h4 className="text-purple-400 font-semibold">Default Templates</h4>
+                <p className="text-gray-400 text-sm">
+                  {hasDefaultTemplate && defaultTemplate 
+                    ? `Application: ${defaultTemplate.name}${userSettings?.defaultFollowUpTemplateId ? ' • Follow-up: Set' : ''}`
+                    : 'Set your default templates for applications and follow-ups'
+                  }
+                </p>
               </div>
-              <button
-                onClick={() => setShowDefaultTemplateModal(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer px-4 py-2 rounded-lg transition"
-              >
-                Change Template
-              </button>
             </div>
+            <button
+              onClick={() => {
+                setDefaultTemplateModalType('default');
+                setShowDefaultTemplateModal(true);
+              }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white cursor-pointer px-4 py-2 rounded-lg transition"
+            >
+              {hasDefaultTemplate || userSettings?.defaultFollowUpTemplateId ? 'Change Templates' : 'Set Templates'}
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 mb-4">
           <div className="flex flex-wrap items-center gap-4">
@@ -607,6 +782,7 @@ export default function JobTrackerSpreadsheet() {
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-gray-900/50 cursor-pointer border border-gray-700/50 rounded-lg px-4 py-2 text-white">
               <option value="all" className="cursor-pointer">All Status</option>
               <option value="DRAFT" className="cursor-pointer">Draft</option>
+              <option value="NOT_SENT" className="cursor-pointer">Not Sent</option>
               <option value="SCHEDULED" className="cursor-pointer">Scheduled</option>
               <option value="SENT" className="cursor-pointer">Sent</option>
               <option value="FAILED" className="cursor-pointer">Failed</option>
@@ -652,18 +828,37 @@ export default function JobTrackerSpreadsheet() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Schedule</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Follow-ups</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Interval</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Batch</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={11} className="text-center py-12 text-gray-400">Loading jobs...</td></tr>
+                  <tr><td colSpan={12} className="text-center py-12 text-gray-400">Loading jobs...</td></tr>
                 ) : filteredJobs.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center py-12 text-gray-400">No jobs found. Click "Add Row" to create your first job.</td></tr>
+                  <tr><td colSpan={12} className="text-center py-12 text-gray-400">No jobs found. Click "Add Row" to create your first job.</td></tr>
                 ) : (
                   filteredJobs.map((job) => (
-                    <SpreadsheetRow key={job.id} job={job} templates={templates} defaultTemplate={defaultTemplate} isSelected={selectedJobs.has(job.id)} editingCell={editingCell} onSelect={(selected) => handleSelectJob(job.id, selected)} onCellUpdate={handleCellUpdate} onStartEdit={(field) => setEditingCell({ jobId: job.id, field })} onEndEdit={() => setEditingCell(null)} onContextMenu={(e) => handleContextMenu(e, job.id)} onClone={() => handleCloneRow(job.id)} onDelete={() => handleDeleteRow(job.id)} onSendNow={() => handleSendNow(job.id)} />
+                    <SpreadsheetRow 
+                      key={job.id} 
+                      job={job} 
+                      templates={templates} 
+                      defaultTemplate={defaultTemplate} 
+                      isSelected={selectedJobs.has(job.id)} 
+                      editingCell={editingCell} 
+                      onSelect={(selected) => handleSelectJob(job.id, selected)} 
+                      onCellUpdate={handleCellUpdate} 
+                      onStartEdit={(field) => setEditingCell({ jobId: job.id, field })} 
+                      onEndEdit={() => setEditingCell(null)} 
+                      onContextMenu={(e) => handleContextMenu(e, job.id)} 
+                      onClone={() => handleCloneRow(job.id)} 
+                      onDelete={() => handleDeleteRow(job.id)} 
+                      onSendNow={() => handleSendNow(job.id)}
+                      onSave={() => saveJob(job)}
+                      autoSaveStatus={autoSaveStatus[job.id] || 'idle'}
+                      isDirty={job.isDirty || false}
+                    />
                   ))
                 )}
               </tbody>

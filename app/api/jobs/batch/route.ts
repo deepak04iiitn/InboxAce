@@ -77,9 +77,12 @@ export async function POST(req: NextRequest) {
       customScheduledFor: scheduledFor || null,
       hasCustomFollowUp: maxFollowUps > 0,
       customMaxFollowUps: maxFollowUps || null,
+      customFollowUpInterval: daysBetweenFollowUps || user.defaultFollowUpInterval || 1,
       notes: job.notes || null,
       tags: job.tags || [],
       status: "NOT_SENT",
+      // Set auto-send timer to 30 minutes from now if not scheduled
+      autoSendAt: scheduledFor ? null : new Date(Date.now() + 30 * 60 * 1000),
     }));
 
     await prisma.job.createMany({

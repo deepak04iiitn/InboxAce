@@ -41,8 +41,9 @@ interface Job {
   customBody: string;
   status: string;
   customSendNow: boolean;
-  customScheduledFor: string;
+  customScheduledFor: string | null;
   customMaxFollowUps: number;
+  customFollowUpInterval?: number;
   followUpsSent: number;
   templateId: string;
   template?: {
@@ -89,9 +90,14 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showDefaultTemplateModal, setShowDefaultTemplateModal] = useState(false);
+  const [defaultTemplateModalType, setDefaultTemplateModalType] = useState<'default' | 'followUp'>('default');
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [hasDefaultTemplate, setHasDefaultTemplate] = useState(false);
   const [checkingDefaultTemplate, setCheckingDefaultTemplate] = useState(true);
+  const [userSettings, setUserSettings] = useState<{
+    defaultFollowUpInterval?: number;
+    defaultFollowUpTemplateId?: string;
+  } | null>(null);
   
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +105,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
     checkDefaultTemplate();
     fetchTemplates();
     checkPremiumStatus();
+    fetchUserSettings();
   }, []);
 
   useEffect(() => {
@@ -119,16 +126,35 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
     }
   };
 
+  const fetchUserSettings = async () => {
+    try {
+      const response = await fetch('/api/user/settings');
+      const data = await response.json();
+      if (data.success) {
+        setUserSettings({
+          defaultFollowUpInterval: data.settings.defaultFollowUpInterval,
+          defaultFollowUpTemplateId: data.settings.defaultFollowUpTemplateId,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch user settings:', error);
+    }
+  };
+
   const checkDefaultTemplate = async () => {
     try {
       const response = await fetch('/api/user/default-template');
       const data = await response.json();
       
+      console.log('Default template API response (workspace):', data);
+      
       if (data.success) {
         setHasDefaultTemplate(data.hasDefaultTemplate);
         
-        if (data.template) {
-          setDefaultTemplate(data.template);
+        if (data.defaultTemplate) {
+          setDefaultTemplate(data.defaultTemplate);
+        } else {
+          console.log('No default template found in API response (workspace)');
         }
         
         if (!data.hasDefaultTemplate && hasEmailAccount) {
@@ -192,6 +218,8 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
   };
 
   const handleAddRow = () => {
+    console.log("Add row clicked (workspace)", { hasEmailAccount, hasDefaultTemplate, defaultTemplate });
+    
     if (!hasEmailAccount) {
       toast.error("Please connect your email account first");
       return;
@@ -203,8 +231,15 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       return;
     }
 
-    if (!defaultTemplate) {
-      toast.error("Default template not loaded. Please try again.");
+    // If we have a default template ID but no template object, try to use the first available template
+    let templateToUse = defaultTemplate;
+    if (!templateToUse && templates.length > 0) {
+      templateToUse = templates[0];
+      console.log("Using first available template as fallback (workspace):", templateToUse);
+    }
+
+    if (!templateToUse) {
+      toast.error("No template available. Please create or select a template first.");
       return;
     }
 
@@ -216,14 +251,15 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       position: "",
       company: "",
       emailType: "APPLICATION",
-      customSubject: defaultTemplate.subject || "",
-      customBody: defaultTemplate.body || "",
-      status: "DRAFT",
+      customSubject: templateToUse.subject || "",
+      customBody: templateToUse.body || "",
+      status: "NOT_SENT",
       customSendNow: true,
-      customScheduledFor: "",
+      customScheduledFor: null, // Use null for no scheduled time
       customMaxFollowUps: 0,
+      customFollowUpInterval: userSettings?.defaultFollowUpInterval || 3,
       followUpsSent: 0,
-      templateId: defaultTemplate.id,
+      templateId: templateToUse.id,
       notes: "",
       tags: [],
       customLinks: [],
@@ -235,6 +271,8 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
         email: session?.user?.email || "",
       },
     };
+    
+    console.log("New job object created:", newJob);
     
     setJobs([newJob as Job, ...jobs]);
     setTimeout(() => {
@@ -253,11 +291,18 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       setTimeout(async () => {
         if (jobId.startsWith("temp-")) {
           const job = updatedJobs[jobIndex];
-          if (job.recipientEmail && job.recipientName) {
+          // Create job immediately when both email and name are provided
+          if (job.recipientEmail && job.recipientName && job.recipientEmail.trim() && job.recipientName.trim()) {
+            console.log("Creating job for temp ID:", jobId, job);
             await createJob(job);
           }
         } else {
-          await updateJob(jobId, { [field]: value });
+          // Reset auto-send timer when job is updated
+          const updateData: any = { [field]: value };
+          if (field !== 'status' && field !== 'customScheduledFor') {
+            updateData.autoSendAt = new Date(Date.now() + 30 * 60 * 1000);
+          }
+          await updateJob(jobId, updateData);
         }
       }, 800);
 
@@ -267,20 +312,75 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
 
   const createJob = async (job: Job) => {
     try {
+      // Remove the user field before sending to API - it's only for display
+      const { user, ...jobData } = job;
+      console.log("Creating workspace job:", jobData);
+      
       const response = await fetch(`/api/workspaces/${workspaceId}/jobs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(job),
+        body: JSON.stringify(jobData),
       });
-      const data = await response.json();
+      
+      console.log("Workspace job creation response status:", response.status);
+      console.log("Workspace job creation response headers:", Object.fromEntries(response.headers.entries()));
+      
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        console.error("Response not ok:", response.status, response.statusText);
+        const errorText = await response.text();
+        console.error("Error response body:", errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Check if response has content
+      const responseText = await response.text();
+      console.log("Raw response text:", responseText);
+      
+      if (!responseText || responseText.trim() === '') {
+        console.error("Empty response body received");
+        throw new Error("Empty response from server");
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse JSON response:", parseError);
+        console.error("Response text that failed to parse:", responseText);
+        throw new Error("Invalid JSON response from server");
+      }
+      
+      console.log("Workspace job creation response data:", data);
+      
       if (data.success) {
+        // Update the job with the new ID from the server
         setJobs(prevJobs => prevJobs.map((j) => 
           j.id === job.id ? { ...j, id: data.job.id } : j
         ));
         toast.success("Job created", { duration: 1500 });
+      } else {
+        console.error("Job creation failed - Full error response:", data);
+        console.error("Error details:", {
+          error: data.error,
+          message: data.message,
+          details: data.details,
+          status: response.status
+        });
+        toast.error(data.error || data.message || "Failed to create job");
+        // Remove the temporary job from the list if creation failed
+        setJobs(prevJobs => prevJobs.filter(j => j.id !== job.id));
       }
     } catch (error) {
       console.error("Failed to create job:", error);
+      console.error("Error details:", {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      toast.error(`Error: ${error instanceof Error ? error.message : "Failed to create job"}`);
+      // Remove the temporary job from the list if creation failed
+      setJobs(prevJobs => prevJobs.filter(j => j.id !== job.id));
     }
   };
 
@@ -580,7 +680,10 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
                 </div>
               </div>
               <button
-                onClick={() => setShowDefaultTemplateModal(true)}
+                onClick={() => {
+                  setDefaultTemplateModalType('default');
+                  setShowDefaultTemplateModal(true);
+                }}
                 className="bg-yellow-600 hover:bg-yellow-700 cursor-pointer text-white px-4 py-2 rounded-lg transition"
               >
                 Select Template
@@ -589,25 +692,32 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
           </div>
         )}
 
-        {hasDefaultTemplate && defaultTemplate && (
-          <div className="mb-4 bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+        {/* Default Templates Settings */}
+        <div className="mb-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-purple-400" />
-            <div>
-                  <h4 className="text-purple-400 font-semibold">Default Template: {defaultTemplate.name}</h4>
-                  <p className="text-gray-400 text-sm">New rows will automatically use this template</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-purple-400" />
+              <div>
+                <h4 className="text-purple-400 font-semibold">Default Templates</h4>
+                <p className="text-gray-400 text-sm">
+                  {hasDefaultTemplate && defaultTemplate 
+                    ? `Application: ${defaultTemplate.name}${userSettings?.defaultFollowUpTemplateId ? ' • Follow-up: Set' : ''}`
+                    : 'Set your default templates for applications and follow-ups'
+                  }
+                </p>
               </div>
-              <button
-                onClick={() => setShowDefaultTemplateModal(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer px-4 py-2 rounded-lg transition"
-              >
-                Change Template
-              </button>
             </div>
+            <button
+              onClick={() => {
+                setDefaultTemplateModalType('default');
+                setShowDefaultTemplateModal(true);
+              }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white cursor-pointer px-4 py-2 rounded-lg transition"
+            >
+              {hasDefaultTemplate || userSettings?.defaultFollowUpTemplateId ? 'Change Templates' : 'Set Templates'}
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 mb-4">
           <div className="flex flex-wrap items-center gap-4">
@@ -669,6 +779,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Schedule</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Follow-ups</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Interval</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Added By</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Batch</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Actions</th>
@@ -676,9 +787,9 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={12} className="text-center py-12 text-gray-400">Loading jobs...</td></tr>
+                  <tr><td colSpan={13} className="text-center py-12 text-gray-400">Loading jobs...</td></tr>
                 ) : filteredJobs.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center py-12 text-gray-400">No jobs found. Click "Add Row" to create your first job.</td></tr>
+                  <tr><td colSpan={13} className="text-center py-12 text-gray-400">No jobs found. Click "Add Row" to create your first job.</td></tr>
                 ) : (
                   filteredJobs.map((job) => (
                     <SpreadsheetRow key={job.id} job={job} templates={templates} defaultTemplate={defaultTemplate} isSelected={selectedJobs.has(job.id)} editingCell={editingCell} onSelect={(selected) => handleSelectJob(job.id, selected)} onCellUpdate={handleCellUpdate} onStartEdit={(field) => setEditingCell({ jobId: job.id, field })} onEndEdit={() => setEditingCell(null)} onContextMenu={(e) => handleContextMenu(e, job.id)} onClone={() => handleCloneRow(job.id)} onDelete={() => handleDeleteRow(job.id)} onSendNow={() => handleSendNow(job.id)} />
