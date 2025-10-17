@@ -56,6 +56,8 @@ interface Job {
   customLinks: string[];
   batchId?: string;
   batchName?: string;
+  lastSavedAt?: string;
+  isDirty?: boolean;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -98,6 +100,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
     defaultFollowUpInterval?: number;
     defaultFollowUpTemplateId?: string;
   } | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
   
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -253,7 +256,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       emailType: "APPLICATION",
       customSubject: templateToUse.subject || "",
       customBody: templateToUse.body || "",
-      status: "NOT_SENT",
+      status: "DRAFT",
       customSendNow: true,
       customScheduledFor: null, // Use null for no scheduled time
       customMaxFollowUps: 0,
@@ -263,6 +266,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       notes: "",
       tags: [],
       customLinks: [],
+      isDirty: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       user: {
@@ -286,40 +290,94 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       if (jobIndex === -1) return prevJobs;
 
       const updatedJobs = [...prevJobs];
-      updatedJobs[jobIndex] = { ...updatedJobs[jobIndex], [field]: value };
-      
-      setTimeout(async () => {
-        if (jobId.startsWith("temp-")) {
-          const job = updatedJobs[jobIndex];
-          // Create job immediately when both email and name are provided
-          if (job.recipientEmail && job.recipientName && job.recipientEmail.trim() && job.recipientName.trim()) {
-            console.log("Creating job for temp ID:", jobId, job);
-            await createJob(job);
-          }
-        } else {
-          // Reset auto-send timer when job is updated
-          const updateData: any = { [field]: value };
-          if (field !== 'status' && field !== 'customScheduledFor') {
-            updateData.autoSendAt = new Date(Date.now() + 30 * 60 * 1000);
-          }
-          await updateJob(jobId, updateData);
-        }
-      }, 800);
+      updatedJobs[jobIndex] = { ...updatedJobs[jobIndex], [field]: value, isDirty: true } as Job;
 
       return updatedJobs;
     });
   }, []);
 
+  const saveJob = async (job: Job) => {
+    try {
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'saving' }));
+
+      // For temp jobs, validate and create
+      if (job.id.startsWith('temp-')) {
+        if (!job.recipientName?.trim() || !job.recipientEmail?.trim() || !job.position?.trim() || !job.company?.trim()) {
+          toast.error('Please fill recipient name, email, position, and company');
+          setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+          return;
+        }
+        await createJob(job);
+        return;
+      }
+
+      // Existing job: update via auto-save endpoint to set lastSavedAt/isDirty
+      const response = await fetch('/api/jobs/auto-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: job.id,
+          updates: {
+            recipientName: job.recipientName,
+            recipientEmail: job.recipientEmail,
+            position: job.position,
+            company: job.company,
+            recipientGender: job.recipientGender,
+            emailType: job.emailType,
+            customSubject: job.customSubject,
+            customBody: job.customBody,
+            customLinks: job.customLinks,
+            customSendNow: job.customSendNow,
+            customScheduledFor: job.customScheduledFor,
+            customMaxFollowUps: job.customMaxFollowUps,
+            customFollowUpInterval: job.customFollowUpInterval,
+            notes: job.notes,
+            tags: job.tags,
+          },
+          isDraft: true,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, isDirty: false, lastSavedAt: data.savedAt } : j));
+        setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'saved' }));
+        toast.success('Job saved', { duration: 1500 });
+      } else {
+        throw new Error(data.error || 'Failed to save job');
+      }
+    } catch (error) {
+      console.error('Workspace save failed:', error);
+      setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+      toast.error('Failed to save job');
+    }
+  };
+
   const createJob = async (job: Job) => {
     try {
       // Remove the user field before sending to API - it's only for display
       const { user, ...jobData } = job;
-      console.log("Creating workspace job:", jobData);
+      // Validate required fields
+      if (!jobData.recipientName?.trim() || !jobData.recipientEmail?.trim() || !jobData.position?.trim() || !jobData.company?.trim()) {
+        console.log('Workspace job creation blocked - missing required fields:', {
+          recipientName: jobData.recipientName,
+          recipientEmail: jobData.recipientEmail,
+          position: jobData.position,
+          company: jobData.company,
+        });
+        toast.error('Please fill recipient name, email, position, and company');
+        setAutoSaveStatus(prev => ({ ...prev, [job.id]: 'error' }));
+        return;
+      }
+
+      // Force DRAFT on creation from workspace
+      const payload = { ...jobData, status: jobData.status || 'DRAFT' };
+      console.log("Workspace job creation request data:", payload);
       
       const response = await fetch(`/api/workspaces/${workspaceId}/jobs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(jobData),
+        body: JSON.stringify(payload),
       });
       
       console.log("Workspace job creation response status:", response.status);
@@ -356,8 +414,9 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
       if (data.success) {
         // Update the job with the new ID from the server
         setJobs(prevJobs => prevJobs.map((j) => 
-          j.id === job.id ? { ...j, id: data.job.id } : j
+          j.id === job.id ? { ...j, id: data.job.id, isDirty: false } : j
         ));
+        setAutoSaveStatus(prev => ({ ...prev, [data.job.id]: 'saved' }));
         toast.success("Job created", { duration: 1500 });
       } else {
         console.error("Job creation failed - Full error response:", data);
@@ -669,7 +728,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
           <EmailAccountStatus onStatusChange={setHasEmailAccount} />
         </div>
 
-        {!checkingDefaultTemplate && !hasDefaultTemplate && hasEmailAccount && (
+        {/* {!checkingDefaultTemplate && !hasDefaultTemplate && hasEmailAccount && (
           <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -690,7 +749,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
               </button>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Default Templates Settings */}
         <div className="mb-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
@@ -792,7 +851,7 @@ export default function WorkspaceSpreadsheet({ workspaceId }: { workspaceId: str
                   <tr><td colSpan={13} className="text-center py-12 text-gray-400">No jobs found. Click "Add Row" to create your first job.</td></tr>
                 ) : (
                   filteredJobs.map((job) => (
-                    <SpreadsheetRow key={job.id} job={job} templates={templates} defaultTemplate={defaultTemplate} isSelected={selectedJobs.has(job.id)} editingCell={editingCell} onSelect={(selected) => handleSelectJob(job.id, selected)} onCellUpdate={handleCellUpdate} onStartEdit={(field) => setEditingCell({ jobId: job.id, field })} onEndEdit={() => setEditingCell(null)} onContextMenu={(e) => handleContextMenu(e, job.id)} onClone={() => handleCloneRow(job.id)} onDelete={() => handleDeleteRow(job.id)} onSendNow={() => handleSendNow(job.id)} />
+                    <SpreadsheetRow key={job.id} job={job} templates={templates} defaultTemplate={defaultTemplate} isSelected={selectedJobs.has(job.id)} editingCell={editingCell} onSelect={(selected) => handleSelectJob(job.id, selected)} onCellUpdate={handleCellUpdate} onStartEdit={(field) => setEditingCell({ jobId: job.id, field })} onEndEdit={() => setEditingCell(null)} onContextMenu={(e) => handleContextMenu(e, job.id)} onClone={() => handleCloneRow(job.id)} onDelete={() => handleDeleteRow(job.id)} onSendNow={() => handleSendNow(job.id)} onSave={() => saveJob(job)} autoSaveStatus={autoSaveStatus[job.id] || 'idle'} isDirty={job.isDirty || false} />
                   ))
                 )}
               </tbody>

@@ -717,7 +717,7 @@ export default function JobTrackerSpreadsheet() {
           <EmailAccountStatus onStatusChange={setHasEmailAccount} />
         </div>
 
-        {!checkingDefaultTemplate && !hasDefaultTemplate && hasEmailAccount && (
+        {/* {!checkingDefaultTemplate && !hasDefaultTemplate && hasEmailAccount && (
           <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -738,7 +738,7 @@ export default function JobTrackerSpreadsheet() {
               </button>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Default Templates Settings */}
         <div className="mb-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl p-4">
